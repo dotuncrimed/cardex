@@ -472,3 +472,53 @@ th {
     min-width: 55px;
   }
 }
+
+/* =========================
+   READY STATUS UI
+========================= */
+
+.ready-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  margin-bottom: 6px;
+  transition: background 0.2s ease;
+}
+
+.ready-status-row.ready {
+  background: rgba(124, 255, 178, 0.08);
+  border: 1px solid rgba(124, 255, 178, 0.2);
+}
+
+.ready-status-row.not-ready {
+  background: rgba(255, 156, 156, 0.08);
+  border: 1px solid rgba(255, 156, 156, 0.2);
+}
+
+.ready-icon {
+  font-size: 22px;
+}
+
+.player-name {
+  flex: 1;
+  font-weight: bold;
+}
+
+.ready-text {
+  font-weight: bold;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.player-row.ready .ready-text {
+  color: #7cffb2;
+}
+
+.player-row.not-ready .ready-text {
+  color: #ff9c9c;
+}
