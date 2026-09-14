@@ -127,7 +127,8 @@ export async function createRoom(user, settings) {
         readyTimerSeconds: Number(settings.readyTimerSeconds) || 0,
         botLevel: settings.botLevel || "normal",
         autoFillBots: Boolean(settings.autoFillBots),
-        scoopBonus: Boolean(settings.scoopBonus)
+        scoopBonus: Boolean(settings.scoopBonus),
+        autoArrange: Boolean(settings.autoArrange)
       },
       players: [makeHumanSeat(user, 0)],
       spectators: []
@@ -633,11 +634,11 @@ export async function finishRound(roomId, user) {
       );
     }
 
-await updateUserStats(
-  ranking.username,
-  ranking.points,
-  ranking.prize > 0
-);
+    await updateUserStats(
+      ranking.username,
+      ranking.points,
+      ranking.prize > 0
+    );
   }
 
   const readyTimerSeconds = Number(room.settings.readyTimerSeconds) || 0;
