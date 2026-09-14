@@ -5,13 +5,13 @@
 body {
   margin: 0;
   font-family: Arial, Helvetica, sans-serif;
-  background: #083d1f;
-  color: #ffffff;
+  background: #073b1e;
+  color: white;
 }
 
 #app {
   min-height: 100vh;
-  padding: 18px;
+  padding: 16px;
 }
 
 .hidden {
@@ -19,7 +19,7 @@ body {
 }
 
 .screen {
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
@@ -27,13 +27,21 @@ body {
   background: rgba(0, 0, 0, 0.28);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 16px;
-  padding: 24px;
-  max-width: 520px;
-  margin: 40px auto;
+  padding: 20px;
+  margin: 20px auto;
+  max-width: 560px;
 }
 
 .wide-panel {
-  max-width: 1100px;
+  max-width: 1200px;
+}
+
+.panel-sub {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 14px;
+  margin: 14px 0;
 }
 
 h1,
@@ -42,37 +50,34 @@ h3 {
   margin-top: 0;
 }
 
-.subtitle {
-  color: rgba(255, 255, 255, 0.8);
-}
-
 .form-group {
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .form-group label {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
   font-weight: bold;
 }
 
-.form-group input {
+.form-group input[type="text"],
+.form-group input[type="password"],
+.form-group input[type="number"],
+.form-group select {
   width: 100%;
-  padding: 12px;
+  padding: 10px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.95);
-  font-size: 16px;
+  font-size: 15px;
 }
 
 button {
   border: none;
   border-radius: 10px;
-  padding: 12px 16px;
+  padding: 11px 14px;
   cursor: pointer;
-  font-size: 15px;
-  margin-right: 8px;
-  margin-top: 8px;
+  margin: 6px 6px 0 0;
+  font-size: 14px;
 }
 
 .primary-button {
@@ -93,8 +98,9 @@ button {
   font-size: 13px;
 }
 
-button:hover {
-  opacity: 0.92;
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .error {
@@ -102,34 +108,105 @@ button:hover {
   min-height: 20px;
 }
 
-.small-note {
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 13px;
-}
-
-.stats-line {
+.message {
+  min-height: 22px;
+  color: #fff59d;
   font-weight: bold;
+  margin: 8px 0;
 }
 
 .topbar {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   margin-bottom: 12px;
 }
 
-.message {
-  min-height: 24px;
-  margin-bottom: 14px;
+.room-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.player-row {
+  padding: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.player-row.ready {
+  color: #7cffb2;
+}
+
+.player-row.not-ready {
+  color: #ffd0d0;
+}
+
+.card-row {
+  min-height: 96px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+}
+
+.hand-area .card-row {
+  justify-content: center;
+  min-height: 130px;
+}
+
+.card {
+  width: 68px;
+  height: 98px;
+  border-radius: 10px;
+  background: white;
+  color: #111;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.15s ease;
+}
+
+.hand-area .card {
+  margin-left: -34px;
+}
+
+.hand-area .card:first-child {
+  margin-left: 0;
+}
+
+.hand-area .card:hover {
+  transform: translateY(-18px);
+  z-index: 20;
+}
+
+.card.selected {
+  outline: 3px solid #ffd54f;
+  transform: translateY(-22px);
+  z-index: 30;
+}
+
+.card.red {
+  color: #c62828;
+}
+
+.card .rank {
+  font-size: 18px;
   font-weight: bold;
-  color: #fff59d;
+}
+
+.card .suit {
+  font-size: 24px;
 }
 
 .arrange-area {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 14px;
-  margin-bottom: 18px;
+  gap: 12px;
 }
 
 @media (min-width: 900px) {
@@ -140,70 +217,15 @@ button:hover {
 
 .arrange-block,
 .hand-area {
-  background: rgba(0, 0, 0, 0.22);
+  background: rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 14px;
-  padding: 14px;
-}
-
-.card-row {
-  min-height: 86px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px 0;
-}
-
-.card {
-  width: 58px;
-  height: 82px;
-  border-radius: 10px;
-  background: #ffffff;
-  color: #111;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 6px;
-  cursor: pointer;
-  user-select: none;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
-  font-weight: bold;
-}
-
-.card.red {
-  color: #c62828;
-}
-
-.card.selected {
-  outline: 3px solid #ffd54f;
-}
-
-.card .rank {
-  font-size: 18px;
-}
-
-.card .suit {
-  font-size: 22px;
-}
-
-.hand-area {
-  margin-bottom: 16px;
-}
-
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.result-message {
-  font-size: 18px;
-  font-weight: bold;
+  padding: 12px;
 }
 
 .table-wrap {
   overflow: auto;
-  margin: 18px 0;
+  margin: 14px 0;
 }
 
 table {
@@ -214,32 +236,60 @@ table {
 
 th,
 td {
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 8px;
   text-align: left;
   vertical-align: top;
 }
 
 th {
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(0, 0, 0, 0.24);
 }
 
-.mini-cards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.mini-card {
-  display: inline-block;
-  background: white;
-  color: black;
-  border-radius: 6px;
-  padding: 3px 5px;
-  font-size: 12px;
+.result-summary {
+  font-size: 18px;
   font-weight: bold;
 }
 
-.mini-card.red {
-  color: #c62828;
+.details-block {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 10px;
+  margin: 8px 0;
+}
+
+.win {
+  color: #7cffb2;
+}
+
+.loss {
+  color: #ff9c9c;
+}
+
+.tie {
+  color: #ffffff;
+}
+
+.ready-area {
+  margin-top: 16px;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 900px) {
+  .admin-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.admin-section {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 14px;
 }
