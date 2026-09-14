@@ -1,0 +1,649 @@
+import {
+  watchAuth,
+  loginOrRegister,
+  logoutUser,
+  isFirebaseConfigured
+} from "./auth.js";
+
+import { db } from "./firebase.js";
+
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  increment
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+import {
+  buildDeck,
+  shuffle,
+  sortCards,
+  rankOf,
+  suitOf,
+  suitSymbol,
+  isRedSuit
+} from "./cards.js";
+
+import {
+  isLegalArrangement,
+  compareArrangements
+} from "./evaluator.js";
+
+import { botArrangeHand } from "./bot.js";
+
+const state = {
+  user: null,
+  stats: null,
+  hands: [],
+  humanArrangement: {
+    front: [],
+    middle: [],
+    back: []
+  },
+  selectedCards: new Set(),
+  results: null
+};
+
+function $(selector) {
+  return document.querySelector(selector);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function capitalize(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function emptyArrangement() {
+  return {
+    front: [],
+    middle: [],
+    back: []
+  };
+}
+
+function assignedCardsSet() {
+  const arrangement = state.humanArrangement;
+
+  return new Set([
+    ...arrangement.front,
+    ...arrangement.middle,
+    ...arrangement.back
+  ]);
+}
+
+function localStatsKey(username) {
+  return `chinese_poker_stats_${username}`;
+}
+
+function getLocalStats(username) {
+  const raw = localStorage.getItem(localStatsKey(username));
+
+  if (!raw) {
+    return {
+      wins: 0,
+      losses: 0,
+      draws: 0,
+      games: 0,
+      points: 0
+    };
+  }
+
+  return JSON.parse(raw);
+}
+
+function saveLocalStats(username, stats) {
+  localStorage.setItem(localStatsKey(username), JSON.stringify(stats));
+}
+
+function friendlyAuthError(error) {
+  const messages = {
+    "auth/invalid-email": "Invalid username.",
+    "auth/weak-password": "PIN must be at least 6 characters.",
+    "auth/email-already-in-use": "That username already exists.",
+    "auth/invalid-credential": "Incorrect username or PIN.",
+    "auth/wrong-password": "Incorrect PIN.",
+    "auth/too-many-requests": "Too many attempts. Please try again later.",
+    "auth/operation-not-allowed": "Enable Email/Password login in Firebase Authentication."
+  };
+
+  return messages[error.code] || error.message || "Authentication failed.";
+}
+
+function showScreen(name) {
+  const screens = [
+    $("#login-screen"),
+    $("#menu-screen"),
+    $("#arrange-screen"),
+    $("#result-screen")
+  ];
+
+  screens.forEach((screen) => screen.classList.add("hidden"));
+
+  $(`#${name}-screen`).classList.remove("hidden");
+}
+
+function setMessage(message) {
+  $("#message").textContent = message;
+}
+
+function updateStatsLine() {
+  const stats = state.stats || {
+    wins: 0,
+    losses: 0,
+    draws: 0,
+    games: 0,
+    points: 0
+  };
+
+  $("#stats-line").textContent =
+    `Wins: ${stats.wins || 0} | ` +
+    `Losses: ${stats.losses || 0} | ` +
+    `Draws: ${stats.draws || 0} | ` +
+    `Games: ${stats.games || 0} | ` +
+    `Points: ${stats.points || 0}`;
+}
+
+async function loadStats() {
+  if (!state.user) return;
+
+  if (isFirebaseConfigured && !state.user.demo) {
+    try {
+      const userRef = doc(db, "users", state.user.username);
+      const snap = await getDoc(userRef);
+
+      if (snap.exists()) {
+        state.stats = snap.data();
+      } else {
+        state.stats = {
+          wins: 0,
+          losses: 0,
+          draws: 0,
+          games: 0,
+          points: 0
+        };
+      }
+    } catch (error) {
+      console.warn("Could not load Firestore stats:", error);
+      state.stats = getLocalStats(state.user.username);
+    }
+  } else {
+    state.stats = getLocalStats(state.user.username);
+  }
+
+  updateStatsLine();
+}
+
+async function updateStatsAfterGame(points) {
+  if (!state.user) return;
+
+  const humanPoints = points[0];
+  const maxPoints = Math.max(...points);
+  const winnerCount = points.filter((p) => p === maxPoints).length;
+
+  const result =
+    humanPoints < maxPoints ? "loss" :
+    winnerCount > 1 ? "draw" :
+    "win";
+
+  if (isFirebaseConfigured && !state.user.demo) {
+    const userRef = doc(db, "users", state.user.username);
+
+    const data = {
+      games: increment(1),
+      points: increment(humanPoints),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (result === "win") {
+      data.wins = increment(1);
+    }
+
+    if (result === "loss") {
+      data.losses = increment(1);
+    }
+
+    if (result === "draw") {
+      data.draws = increment(1);
+    }
+
+    try {
+      await updateDoc(userRef, data);
+    } catch (error) {
+      console.warn("Update failed, trying set:", error);
+
+      try {
+        await setDoc(
+          userRef,
+          {
+            username: state.user.username,
+            uid: state.user.uid,
+            wins: result === "win" ? 1 : 0,
+            losses: result === "loss" ? 1 : 0,
+            draws: result === "draw" ? 1 : 0,
+            games: 1,
+            points: humanPoints,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          { merge: true }
+        );
+      } catch (setError) {
+        console.warn("Could not save stats:", setError);
+      }
+    }
+  } else {
+    const stats = getLocalStats(state.user.username);
+
+    stats.games = (stats.games || 0) + 1;
+    stats.points = (stats.points || 0) + humanPoints;
+
+    if (result === "win") {
+      stats.wins = (stats.wins || 0) + 1;
+    }
+
+    if (result === "loss") {
+      stats.losses = (stats.losses || 0) + 1;
+    }
+
+    if (result === "draw") {
+      stats.draws = (stats.draws || 0) + 1;
+    }
+
+    saveLocalStats(state.user.username, stats);
+  }
+
+  await loadStats();
+}
+
+function makeCardElement(card, isSelected = false) {
+  const el = document.createElement("div");
+  el.className = "card";
+
+  if (isRedSuit(suitOf(card))) {
+    el.classList.add("red");
+  }
+
+  if (isSelected) {
+    el.classList.add("selected");
+  }
+
+  el.innerHTML = `
+    <div class="rank">${rankOf(card)}</div>
+    <div class="suit">${suitSymbol(suitOf(card))}</div>
+  `;
+
+  return el;
+}
+
+function renderHand() {
+  const container = $("#hand-cards");
+  container.innerHTML = "";
+
+  const assigned = assignedCardsSet();
+
+  const unassigned = state.hands[0].filter((card) => !assigned.has(card));
+
+  unassigned.forEach((card) => {
+    const cardElement = makeCardElement(card, state.selectedCards.has(card));
+
+    cardElement.addEventListener("click", () => {
+      if (state.selectedCards.has(card)) {
+        state.selectedCards.delete(card);
+      } else {
+        state.selectedCards.add(card);
+      }
+
+      renderArrangeScreen();
+    });
+
+    container.appendChild(cardElement);
+  });
+}
+
+function renderSection(sectionName) {
+  const container = $(`#${sectionName}-cards`);
+  container.innerHTML = "";
+
+  const cards = sortCards(state.humanArrangement[sectionName]);
+
+  cards.forEach((card) => {
+    const cardElement = makeCardElement(card, false);
+
+    cardElement.addEventListener("click", () => {
+      state.humanArrangement[sectionName] = state.humanArrangement[
+        sectionName
+      ].filter((c) => c !== card);
+
+      state.selectedCards.clear();
+      renderArrangeScreen();
+    });
+
+    container.appendChild(cardElement);
+  });
+}
+
+function renderArrangeScreen() {
+  renderSection("front");
+  renderSection("middle");
+  renderSection("back");
+  renderHand();
+}
+
+function assignSelected(sectionName) {
+  const selected = [...state.selectedCards];
+
+  if (selected.length === 0) {
+    setMessage("Select cards first.");
+    return;
+  }
+
+  const capacity = sectionName === "front" ? 3 : 5;
+  const current = state.humanArrangement[sectionName];
+
+  if (current.length + selected.length > capacity) {
+    setMessage(
+      `${capitalize(sectionName)} can only hold ${capacity} cards.`
+    );
+    return;
+  }
+
+  state.humanArrangement[sectionName] = [
+    ...current,
+    ...selected
+  ];
+
+  state.selectedCards.clear();
+  setMessage(`${capitalize(sectionName)} updated.`);
+  renderArrangeScreen();
+}
+
+function startGame() {
+  const deck = shuffle(buildDeck());
+
+  state.hands = [
+    sortCards(deck.slice(0, 13)),
+    sortCards(deck.slice(13, 26)),
+    sortCards(deck.slice(26, 39)),
+    sortCards(deck.slice(39, 52))
+  ];
+
+  state.humanArrangement = emptyArrangement();
+  state.selectedCards.clear();
+
+  setMessage("Select cards, then assign them to Front, Middle, or Back.");
+
+  renderArrangeScreen();
+  showScreen("arrange");
+}
+
+function disableArrangeButtons(disabled) {
+  $("#auto-button").disabled = disabled;
+  $("#clear-button").disabled = disabled;
+  $("#submit-button").disabled = disabled;
+  $("#assign-front").disabled = disabled;
+  $("#assign-middle").disabled = disabled;
+  $("#assign-back").disabled = disabled;
+}
+
+function scoreGame(arrangements) {
+  const points = [0, 0, 0, 0];
+
+  for (let i = 0; i < arrangements.length; i++) {
+    for (let j = i + 1; j < arrangements.length; j++) {
+      const result = compareArrangements(arrangements[i], arrangements[j]);
+
+      let playerOnePoints = 0;
+      let playerTwoPoints = 0;
+
+      [result.front, result.middle, result.back].forEach((value) => {
+        if (value > 0) {
+          playerOnePoints++;
+        } else if (value < 0) {
+          playerTwoPoints++;
+        }
+      });
+
+      if (playerOnePoints === 3) {
+        playerOnePoints += 3;
+      }
+
+      if (playerTwoPoints === 3) {
+        playerTwoPoints += 3;
+      }
+
+      points[i] += playerOnePoints;
+      points[j] += playerTwoPoints;
+    }
+  }
+
+  return points;
+}
+
+function renderMiniCards(cards) {
+  const container = document.createElement("div");
+  container.className = "mini-cards";
+
+  sortCards(cards).forEach((card) => {
+    const mini = document.createElement("span");
+    mini.className = "mini-card";
+
+    if (isRedSuit(suitOf(card))) {
+      mini.classList.add("red");
+    }
+
+    mini.textContent = `${rankOf(card)}${suitSymbol(suitOf(card))}`;
+    container.appendChild(mini);
+  });
+
+  return container;
+}
+
+function renderResults() {
+  const table = $("#result-table");
+  table.innerHTML = "";
+
+  const headerRow = table.insertRow();
+
+  ["Player", "Front", "Middle", "Back", "Points"].forEach((text) => {
+    const th = document.createElement("th");
+    th.textContent = text;
+    headerRow.appendChild(th);
+  });
+
+  state.results.players.forEach((player, index) => {
+    const row = table.insertRow();
+
+    const nameCell = row.insertCell();
+    nameCell.textContent = player.name;
+
+    const frontCell = row.insertCell();
+    frontCell.appendChild(renderMiniCards(player.arrangement.front));
+
+    const middleCell = row.insertCell();
+    middleCell.appendChild(renderMiniCards(player.arrangement.middle));
+
+    const backCell = row.insertCell();
+    backCell.appendChild(renderMiniCards(player.arrangement.back));
+
+    const pointsCell = row.insertCell();
+    pointsCell.textContent = state.results.points[index];
+  });
+
+  const humanPoints = state.results.points[0];
+  const maxPoints = Math.max(...state.results.points);
+  const winnerCount = state.results.points.filter((p) => p === maxPoints).length;
+
+  if (humanPoints === maxPoints && winnerCount === 1) {
+    $("#result-message").textContent = "You win!";
+  } else if (humanPoints === maxPoints) {
+    $("#result-message").textContent = "You tied for first place.";
+  } else {
+    $("#result-message").textContent =
+      `You scored ${humanPoints}. Winner scored ${maxPoints}.`;
+  }
+}
+
+function finishGame(arrangements) {
+  const players = [
+    {
+      name: state.user.username,
+      arrangement: arrangements[0],
+      isBot: false
+    },
+    {
+      name: "Bot 1",
+      arrangement: arrangements[1],
+      isBot: true
+    },
+    {
+      name: "Bot 2",
+      arrangement: arrangements[2],
+      isBot: true
+    },
+    {
+      name: "Bot 3",
+      arrangement: arrangements[3],
+      isBot: true
+    }
+  ];
+
+  const points = scoreGame(arrangements);
+
+  state.results = {
+    players,
+    points
+  };
+
+  renderResults();
+  showScreen("result");
+  updateStatsAfterGame(points);
+}
+
+watchAuth(async (user) => {
+  state.user = user;
+
+  if (!user) {
+    showScreen("login");
+    return;
+  }
+
+  $("#welcome-name").textContent = user.username;
+
+  $("#firebase-mode").textContent = isFirebaseConfigured
+    ? "Firebase mode enabled."
+    : "Demo mode. Configure /js/config.js to enable Firebase.";
+
+  await loadStats();
+  showScreen("menu");
+});
+
+$("#login-button").addEventListener("click", async () => {
+  const username = $("#login-username").value;
+  const pin = $("#login-pin").value;
+
+  $("#login-error").textContent = "";
+
+  try {
+    await loginOrRegister(username, pin);
+  } catch (error) {
+    $("#login-error").textContent = friendlyAuthError(error);
+  }
+});
+
+$("#logout-button").addEventListener("click", async () => {
+  await logoutUser();
+});
+
+$("#play-button").addEventListener("click", () => {
+  startGame();
+});
+
+$("#quit-button").addEventListener("click", () => {
+  showScreen("menu");
+});
+
+$("#assign-front").addEventListener("click", () => {
+  assignSelected("front");
+});
+
+$("#assign-middle").addEventListener("click", () => {
+  assignSelected("middle");
+});
+
+$("#assign-back").addEventListener("click", () => {
+  assignSelected("back");
+});
+
+$("#auto-button").addEventListener("click", () => {
+  if (!state.hands.length) return;
+
+  setMessage("Auto arranging...");
+
+  setTimeout(() => {
+    state.humanArrangement = botArrangeHand(state.hands[0], "hard");
+    state.selectedCards.clear();
+    setMessage("Auto arranged. Check your hand and submit.");
+    renderArrangeScreen();
+  }, 50);
+});
+
+$("#clear-button").addEventListener("click", () => {
+  state.humanArrangement = emptyArrangement();
+  state.selectedCards.clear();
+  setMessage("Cleared.");
+  renderArrangeScreen();
+});
+
+$("#submit-button").addEventListener("click", async () => {
+  const arrangement = state.humanArrangement;
+
+  if (
+    arrangement.front.length !== 3 ||
+    arrangement.middle.length !== 5 ||
+    arrangement.back.length !== 5
+  ) {
+    setMessage("You need Front 3, Middle 5, and Back 5 cards.");
+    return;
+  }
+
+  if (!isLegalArrangement(arrangement)) {
+    setMessage(
+      "Illegal arrangement. Back must be stronger than Middle, and Middle stronger than Front."
+    );
+    return;
+  }
+
+  disableArrangeButtons(true);
+  setMessage("Bots are arranging their hands...");
+
+  await sleep(80);
+
+  try {
+    const botArrangements = state.hands
+      .slice(1)
+      .map((hand) => botArrangeHand(hand, "normal"));
+
+    await sleep(700);
+
+    finishGame([
+      arrangement,
+      botArrangements[0],
+      botArrangements[1],
+      botArrangements[2]
+    ]);
+  } catch (error) {
+    console.error(error);
+    setMessage("Something went wrong while bots were playing.");
+  } finally {
+    disableArrangeButtons(false);
+  }
+});
+
+$("#continue-button").addEventListener("click", async () => {
+  await loadStats();
+  showScreen("menu");
+});

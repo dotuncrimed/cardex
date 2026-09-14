@@ -1,0 +1,18 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { firebaseConfig } from "./config.js";
+
+export const isFirebaseConfigured = Boolean(
+  firebaseConfig.apiKey &&
+  !firebaseConfig.apiKey.includes("PASTE")
+);
+
+export let auth = null;
+export let db = null;
+
+if (isFirebaseConfigured) {
+  const app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+}
