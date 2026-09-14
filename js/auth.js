@@ -10,14 +10,9 @@ import {
   getDoc,
   setDoc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { DUMMY_EMAIL_DOMAIN, DEFAULT_STARTING_CASH } from "./config.js";
 
-const DUMMY_EMAIL_DOMAIN = "@chinesepoker.app";
-const DEMO_USER_KEY = "chinese_poker_demo_user";
-
-let demoUser = null;
 const authListeners = [];
-
-export { isFirebaseConfigured };
 
 function sanitizeUsername(username) {
   return String(username || "")
@@ -39,24 +34,23 @@ function notifyAuthListeners(user) {
 }
 
 async function ensureUserDocument(username, uid) {
-  try {
-    const userRef = doc(db, "users", username);
-    const snap = await getDoc(userRef);
+  const userRef = doc(db, "users", username);
+  const snap = await getDoc(userRef);
 
-    if (!snap.exists()) {
-      await setDoc(userRef, {
-        username,
-        uid,
-        wins: 0,
-        losses: 0,
-        draws: 0,
-        games: 0,
-        points: 0,
-        createdAt: new Date().toISOString()
-      });
-    }
-  } catch (error) {
-    console.warn("Could not ensure user document:", error);
+  if (!snap.exists()) {
+    await setDoc(userRef, {
+      username,
+      uid,
+      displayName: username,
+      cash: DEFAULT_STARTING_CASH,
+      wins: 0,
+      losses: 0,
+      draws: 0,
+      games: 0,
+      points: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
   }
 }
 
@@ -64,13 +58,7 @@ export function watchAuth(callback) {
   authListeners.push(callback);
 
   if (!isFirebaseConfigured) {
-    const saved = localStorage.getItem(DEMO_USER_KEY);
-    demoUser = saved ? JSON.parse(saved) : null;
-
-    setTimeout(() => {
-      callback(demoUser);
-    }, 0);
-
+    setTimeout(() => callback(null), 0);
     return;
   }
 
@@ -100,15 +88,7 @@ export async function loginOrRegister(username, pin) {
   }
 
   if (!isFirebaseConfigured) {
-    demoUser = {
-      uid: `demo-${username}`,
-      username,
-      demo: true
-    };
-
-    localStorage.setItem(DEMO_USER_KEY, JSON.stringify(demoUser));
-    notifyAuthListeners(demoUser);
-    return;
+    throw new Error("Firebase is not configured. Edit /js/config.js.");
   }
 
   const email = usernameToDummyEmail(username);
@@ -148,12 +128,6 @@ export async function loginOrRegister(username, pin) {
 }
 
 export async function logoutUser() {
-  if (!isFirebaseConfigured) {
-    localStorage.removeItem(DEMO_USER_KEY);
-    demoUser = null;
-    notifyAuthListeners(null);
-    return;
-  }
-
+  if (!isFirebaseConfigured) return;
   await signOut(auth);
 }
