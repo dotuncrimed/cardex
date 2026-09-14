@@ -1,20 +1,41 @@
-# Chinese Poker MVP
+# Chinese Poker Multiplayer MVP
 
-This is a simple Chinese Poker game:
+This is a multiplayer Chinese Poker MVP.
 
-- 1 human player
-- 3 computer bots
-- Firebase Auth using dummy email
-- Firebase Firestore stats
-- GitHub Pages deployment
+Features:
 
-## Local Testing
+- Username + PIN dummy Firebase login
+- Create room
+- Join room with room code
+- Timer options
+- Auto-fill bots
+- Ready button for next round
+- Cash system
+- Admin panel
+- Scoring results
+- Winner sorted top to bottom
 
-Because this project uses ES modules, do not open `index.html` directly from file://.
+## Important
 
-Use a local server.
+This MVP uses client-side logic.
 
-Example:
+Do not use it for real money.
 
-```bash
-npx serve .
+For real cash, move wallet, payout, admin, and bot logic into Firebase Cloud Functions.
+
+## Setup
+
+1. Create Firebase project.
+2. Enable Authentication > Email/Password.
+3. Create Firestore Database.
+4. Copy Firebase web app config.
+5. Paste into `/js/config.js`.
+6. Publish `/firestore.rules`.
+7. Deploy to GitHub Pages.
+
+## Admin Password
+
+Default admin password:
+
+```text
+adminpogi
