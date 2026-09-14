@@ -343,6 +343,27 @@ function renderArrangeSection() {
     return;
   }
 
+  // --- AUTO ARRANGE LOGIC ---
+  if (state.room.settings.autoArrange) {
+    arrangeStatus.textContent = "Auto-arranging your cards...";
+    disableArrangeControls(true);
+    
+    // Small timeout so the UI can render the message first
+    setTimeout(async () => {
+      const arrangement = botArrangeHand(state.handData.hand, "hard");
+      try {
+        await submitArrangement(state.roomId, state.user.uid, arrangement);
+        setRoomMessage("Cards auto-arranged and submitted!");
+      } catch (error) {
+        console.error(error);
+        setRoomMessage("Auto-arrange failed.");
+      }
+    }, 600);
+    
+    return;
+  }
+  // --------------------------
+
   arrangeStatus.textContent = "Arrange your cards.";
   disableArrangeControls(false);
   renderAssignedCards();
@@ -722,10 +743,25 @@ function renderReadyArea() {
 
   const players = [...state.room.players].sort((a, b) => a.seat - b.seat);
 
+  const title = document.createElement("h4");
+  title.textContent = "Next Round Status";
+  title.style.margin = "0 0 10px 0";
+  readyList.appendChild(title);
+
   players.forEach((player) => {
     const div = document.createElement("div");
-    div.className = `player-row ${player.ready ? "ready" : "not-ready"}`;
-    div.textContent = `${player.displayName}: ${player.ready ? "Ready" : "Not Ready"}`;
+    div.className = `player-row ready-status-row ${player.ready ? "ready" : "not-ready"}`;
+    
+    const icon = player.ready ? "✅" : "❌";
+    const statusText = player.ready ? "Ready" : "Waiting...";
+    const youText = (state.user && player.uid === state.user.uid) ? " (You)" : "";
+    
+    div.innerHTML = `
+      <span class="ready-icon">${icon}</span> 
+      <span class="player-name">${player.displayName}${youText}</span> 
+      <span class="ready-text">${statusText}</span>
+    `;
+    
     readyList.appendChild(div);
   });
 
@@ -967,7 +1003,8 @@ $("#create-room-button").addEventListener("click", async () => {
     readyTimerSeconds: Number($("#create-ready-timer").value) || 0,
     botLevel: $("#create-bot-level").value,
     autoFillBots: $("#create-auto-fill-bots").checked,
-    scoopBonus: $("#create-scoop-bonus").checked
+    scoopBonus: $("#create-scoop-bonus").checked,
+    autoArrange: $("#create-auto-arrange").checked // NEW SETTING
   };
 
   try {
