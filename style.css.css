@@ -1,0 +1,245 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #083d1f;
+  color: #ffffff;
+}
+
+#app {
+  min-height: 100vh;
+  padding: 18px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.screen {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.panel {
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 520px;
+  margin: 40px auto;
+}
+
+.wide-panel {
+  max-width: 1100px;
+}
+
+h1,
+h2,
+h3 {
+  margin-top: 0;
+}
+
+.subtitle {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.form-group {
+  margin-bottom: 14px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.95);
+  font-size: 16px;
+}
+
+button {
+  border: none;
+  border-radius: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 15px;
+  margin-right: 8px;
+  margin-top: 8px;
+}
+
+.primary-button {
+  background: #ffd54f;
+  color: #222;
+  font-weight: bold;
+}
+
+.secondary-button {
+  background: #e0e0e0;
+  color: #222;
+}
+
+.small-button {
+  background: #d7fff1;
+  color: #0b3d1f;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+button:hover {
+  opacity: 0.92;
+}
+
+.error {
+  color: #ff8a80;
+  min-height: 20px;
+}
+
+.small-note {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+}
+
+.stats-line {
+  font-weight: bold;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.message {
+  min-height: 24px;
+  margin-bottom: 14px;
+  font-weight: bold;
+  color: #fff59d;
+}
+
+.arrange-area {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+@media (min-width: 900px) {
+  .arrange-area {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+.arrange-block,
+.hand-area {
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.card-row {
+  min-height: 86px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.card {
+  width: 58px;
+  height: 82px;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #111;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 6px;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+  font-weight: bold;
+}
+
+.card.red {
+  color: #c62828;
+}
+
+.card.selected {
+  outline: 3px solid #ffd54f;
+}
+
+.card .rank {
+  font-size: 18px;
+}
+
+.card .suit {
+  font-size: 22px;
+}
+
+.hand-area {
+  margin-bottom: 16px;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.result-message {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.table-wrap {
+  overflow: auto;
+  margin: 18px 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+th,
+td {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.mini-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mini-card {
+  display: inline-block;
+  background: white;
+  color: black;
+  border-radius: 6px;
+  padding: 3px 5px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.mini-card.red {
+  color: #c62828;
+}

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chinese Poker</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- LOGIN SCREEN -->
+    <section id="login-screen" class="screen hidden">
+      <div class="panel">
+        <h1>Chinese Poker</h1>
+        <p class="subtitle">Login with username and PIN.</p>
+
+        <div class="form-group">
+          <label for="login-username">Username</label>
+          <input id="login-username" type="text" maxlength="20" placeholder="e.g. juan" autocomplete="off" />
+        </div>
+
+        <div class="form-group">
+          <label for="login-pin">PIN</label>
+          <input id="login-pin" type="password" maxlength="30" placeholder="Minimum 6 characters" />
+        </div>
+
+        <button id="login-button" class="primary-button">Login / Register</button>
+        <p id="login-error" class="error"></p>
+
+        <p class="small-note">
+          This uses a dummy Firebase email like <br />
+          <code>username@chinesepoker.app</code>
+        </p>
+      </div>
+    </section>
+
+    <!-- MENU SCREEN -->
+    <section id="menu-screen" class="screen hidden">
+      <div class="panel">
+        <h1>Chinese Poker</h1>
+        <p>Welcome, <strong id="welcome-name"></strong></p>
+        <p id="stats-line" class="stats-line"></p>
+        <p id="firebase-mode" class="small-note"></p>
+
+        <button id="play-button" class="primary-button">Play vs Computer</button>
+        <button id="logout-button" class="secondary-button">Logout</button>
+      </div>
+    </section>
+
+    <!-- ARRANGE SCREEN -->
+    <section id="arrange-screen" class="screen hidden">
+      <div class="topbar">
+        <button id="quit-button" class="small-button">Menu</button>
+        <h2>Arrange Your Hand</h2>
+      </div>
+
+      <div id="message" class="message"></div>
+
+      <div class="arrange-area">
+        <div class="arrange-block">
+          <h3>Front - 3 cards</h3>
+          <div id="front-cards" class="card-row"></div>
+          <button id="assign-front" class="small-button">Assign Selected to Front</button>
+        </div>
+
+        <div class="arrange-block">
+          <h3>Middle - 5 cards</h3>
+          <div id="middle-cards" class="card-row"></div>
+          <button id="assign-middle" class="small-button">Assign Selected to Middle</button>
+        </div>
+
+        <div class="arrange-block">
+          <h3>Back - 5 cards</h3>
+          <div id="back-cards" class="card-row"></div>
+          <button id="assign-back" class="small-button">Assign Selected to Back</button>
+        </div>
+      </div>
+
+      <div class="hand-area">
+        <h3>Your Cards</h3>
+        <div id="hand-cards" class="card-row"></div>
+      </div>
+
+      <div class="controls">
+        <button id="auto-button" class="secondary-button">Auto Arrange</button>
+        <button id="clear-button" class="secondary-button">Clear</button>
+        <button id="submit-button" class="primary-button">Submit</button>
+      </div>
+    </section>
+
+    <!-- RESULT SCREEN -->
+    <section id="result-screen" class="screen hidden">
+      <div class="panel wide-panel">
+        <h2>Results</h2>
+        <p id="result-message" class="result-message"></p>
+
+        <div class="table-wrap">
+          <table id="result-table"></table>
+        </div>
+
+        <button id="continue-button" class="primary-button">Continue</button>
+      </div>
+    </section>
+
+  </div>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

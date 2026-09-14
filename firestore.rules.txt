@@ -1,0 +1,22 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSameUsername(username) {
+      return signedIn() &&
+        request.auth.token.email == username + '@chinesepoker.app';
+    }
+
+    match /users/{username} {
+      allow read: if isSameUsername(username);
+      allow create: if isSameUsername(username);
+      allow update: if isSameUsername(username);
+      allow delete: if false;
+    }
+  }
+}
