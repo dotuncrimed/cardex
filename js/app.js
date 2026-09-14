@@ -519,7 +519,7 @@ function renderResultsSection() {
   resultSummary.textContent =
     `Round ${results.roundNumber} | ` +
     `Pot ${results.pot} | ` +
-    `Min Bet ${results.minBet}`;
+    `Winner = most opponents beaten`;
 
   resultTable.innerHTML = "";
 
@@ -529,7 +529,7 @@ function renderResultsSection() {
     "Rank",
     "Player",
     "Type",
-    "Points",
+    "Wins",
     "Bet",
     "Prize",
     "Net"
@@ -554,43 +554,57 @@ function renderResultsSection() {
   resultDetails.innerHTML = "";
 
   results.rankings.forEach((ranking) => {
-    const block = document.createElement("div");
-    block.className = "details-block";
-
-    const title = document.createElement("h4");
-    title.textContent = `${ranking.displayName} details`;
-    block.appendChild(title);
-
     const details = results.details[ranking.uid] || [];
 
     if (details.length === 0) {
-      const empty = document.createElement("div");
-      empty.textContent = "No details.";
-      block.appendChild(empty);
+      return;
     }
+
+    const wrapper = document.createElement("details");
+    wrapper.className = "details-block";
+
+    const summary = document.createElement("summary");
+    summary.textContent = `${ranking.displayName}: ${ranking.points} wins`;
+
+    wrapper.appendChild(summary);
 
     details.forEach((detail) => {
       const row = document.createElement("div");
 
-      const rowText = (value) => {
+      const icon = (value) => {
         if (value > 0) return "W";
         if (value < 0) return "L";
         return "T";
       };
 
+      const colorClass = (value) => {
+        if (value > 0) return "win";
+        if (value < 0) return "loss";
+        return "tie";
+      };
+
+      let matchText = "Tied";
+
+      if (detail.matchResult === "win") {
+        matchText = "Won";
+      }
+
+      if (detail.matchResult === "lose") {
+        matchText = "Lost";
+      }
+
       row.innerHTML = `
         vs ${detail.opponentName}:
-        Front <span class="${detail.rows.front > 0 ? "win" : detail.rows.front < 0 ? "loss" : "tie"}">${rowText(detail.rows.front)}</span>
-        Middle <span class="${detail.rows.middle > 0 ? "win" : detail.rows.middle < 0 ? "loss" : "tie"}">${rowText(detail.rows.middle)}</span>
-        Back <span class="${detail.rows.back > 0 ? "win" : detail.rows.back < 0 ? "loss" : "tie"}">${rowText(detail.rows.back)}</span>
-        | Points ${detail.total}
-        ${detail.scoop ? "| Scoop +3" : ""}
+        Front <span class="${colorClass(detail.rows.front)}">${icon(detail.rows.front)}</span>
+        Middle <span class="${colorClass(detail.rows.middle)}">${icon(detail.rows.middle)}</span>
+        Back <span class="${colorClass(detail.rows.back)}">${icon(detail.rows.back)}</span>
+        — ${matchText}
       `;
 
-      block.appendChild(row);
+      wrapper.appendChild(row);
     });
 
-    resultDetails.appendChild(block);
+    resultDetails.appendChild(wrapper);
   });
 
   renderReadyArea();
