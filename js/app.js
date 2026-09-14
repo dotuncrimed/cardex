@@ -1,48 +1,64 @@
-import {
-  watchAuth,
-  loginOrRegister,
-  logoutUser,
-  isFirebaseConfigured
-} from "./auth.js";
-
-import { db } from "./firebase.js";
+import { isFirebaseConfigured } from "./firebase.js";
+import { watchAuth, loginOrRegister, logoutUser } from "./auth.js";
+import { ADMIN_PASSWORD } from "./config.js";
 
 import {
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  increment
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-import {
-  buildDeck,
-  shuffle,
-  sortCards,
   rankOf,
   suitOf,
   suitSymbol,
-  isRedSuit
+  isRedSuit,
+  sortCards
 } from "./cards.js";
 
 import {
-  isLegalArrangement,
-  compareArrangements
+  isLegalArrangement
 } from "./evaluator.js";
 
-import { botArrangeHand } from "./bot.js";
+import {
+  botArrangeHand
+} from "./bot.js";
+
+import {
+  createRoom,
+  joinRoomByCode,
+  takeSeat,
+  leaveRoom,
+  listenRoom,
+  listenOwnHand,
+  listenUser,
+  startRound,
+  finishRound,
+  submitArrangement,
+  setReady,
+  fillBotsInRoom,
+  replaceUnreadyWithBots,
+  updateRoomSettings,
+  getUserData,
+  adjustCash,
+  setCash,
+  updateDisplayName,
+  addAdminLog
+} from "./db.js";
 
 const state = {
   user: null,
-  stats: null,
-  hands: [],
-  humanArrangement: {
+  userData: null,
+  roomId: localStorage.getItem("currentRoomId") || null,
+  room: null,
+  handData: null,
+  arrangement: {
     front: [],
     middle: [],
     back: []
   },
   selectedCards: new Set(),
-  results: null
+  roundInitialized: null,
+  unsubRoom: null,
+  unsubHand: null,
+  unsubUser: null,
+  adminLoggedIn: sessionStorage.getItem("adminLoggedIn") === "true",
+  hostBusy: false,
+  autoSubmitting: false
 };
 
 function $(selector) {
@@ -53,8 +69,24 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function capitalize(text) {
-  return text.charAt(0).toUpperCase() + text.slice(1);
+function showScreen(name) {
+  const screens = [
+    $("#login-screen"),
+    $("#menu-screen"),
+    $("#room-screen"),
+    $("#admin-screen")
+  ];
+
+  screens.forEach((screen) => screen.classList.add("hidden"));
+  $(`#${name}-screen`).classList.remove("hidden");
+}
+
+function setRoomMessage(message) {
+  $("#room-message").textContent = message || "";
+}
+
+function setAdminMessage(message) {
+  $("#admin-message").textContent = message || "";
 }
 
 function emptyArrangement() {
@@ -66,200 +98,89 @@ function emptyArrangement() {
 }
 
 function assignedCardsSet() {
-  const arrangement = state.humanArrangement;
-
   return new Set([
-    ...arrangement.front,
-    ...arrangement.middle,
-    ...arrangement.back
+    ...state.arrangement.front,
+    ...state.arrangement.middle,
+    ...state.arrangement.back
   ]);
 }
 
-function localStatsKey(username) {
-  return `chinese_poker_stats_${username}`;
+function currentUserInRoomPlayers() {
+  if (!state.room || !state.user) return false;
+
+  return state.room.players.some((player) => player.uid === state.user.uid);
 }
 
-function getLocalStats(username) {
-  const raw = localStorage.getItem(localStatsKey(username));
+function currentUserInRoomSpectators() {
+  if (!state.room || !state.user) return false;
 
-  if (!raw) {
-    return {
-      wins: 0,
-      losses: 0,
-      draws: 0,
-      games: 0,
-      points: 0
-    };
+  return state.room.spectators.some((spectator) => spectator.uid === state.user.uid);
+}
+
+function currentUserPlayerObject() {
+  if (!state.room || !state.user) return null;
+
+  return state.room.players.find((player) => player.uid === state.user.uid) || null;
+}
+
+function isHost() {
+  return Boolean(state.room && state.user && state.room.hostId === state.user.uid);
+}
+
+function clearRoomListeners() {
+  if (state.unsubRoom) {
+    state.unsubRoom();
+    state.unsubRoom = null;
   }
 
-  return JSON.parse(raw);
+  if (state.unsubHand) {
+    state.unsubHand();
+    state.unsubHand = null;
+  }
 }
 
-function saveLocalStats(username, stats) {
-  localStorage.setItem(localStatsKey(username), JSON.stringify(stats));
+function clearRoomState() {
+  clearRoomListeners();
+
+  state.room = null;
+  state.handData = null;
+  state.arrangement = emptyArrangement();
+  state.selectedCards.clear();
+  state.roundInitialized = null;
+
+  localStorage.removeItem("currentRoomId");
+  state.roomId = null;
 }
 
-function friendlyAuthError(error) {
-  const messages = {
-    "auth/invalid-email": "Invalid username.",
-    "auth/weak-password": "PIN must be at least 6 characters.",
-    "auth/email-already-in-use": "That username already exists.",
-    "auth/invalid-credential": "Incorrect username or PIN.",
-    "auth/wrong-password": "Incorrect PIN.",
-    "auth/too-many-requests": "Too many attempts. Please try again later.",
-    "auth/operation-not-allowed": "Enable Email/Password login in Firebase Authentication."
-  };
+async function enterRoom(roomId) {
+  clearRoomListeners();
 
-  return messages[error.code] || error.message || "Authentication failed.";
+  state.roomId = roomId;
+  localStorage.setItem("currentRoomId", roomId);
+
+  state.unsubRoom = listenRoom(roomId, (snapshot) => {
+    if (!snapshot.exists()) {
+      clearRoomState();
+      showScreen("menu");
+      return;
+    }
+
+    state.room = snapshot.data();
+    renderRoom();
+    hostController();
+  });
+
+  showScreen("room");
 }
 
-function showScreen(name) {
-  const screens = [
-    $("#login-screen"),
-    $("#menu-screen"),
-    $("#arrange-screen"),
-    $("#result-screen")
-  ];
-
-  screens.forEach((screen) => screen.classList.add("hidden"));
-
-  $(`#${name}-screen`).classList.remove("hidden");
-}
-
-function setMessage(message) {
-  $("#message").textContent = message;
-}
-
-function updateStatsLine() {
-  const stats = state.stats || {
-    wins: 0,
-    losses: 0,
-    draws: 0,
-    games: 0,
-    points: 0
-  };
-
-  $("#stats-line").textContent =
-    `Wins: ${stats.wins || 0} | ` +
-    `Losses: ${stats.losses || 0} | ` +
-    `Draws: ${stats.draws || 0} | ` +
-    `Games: ${stats.games || 0} | ` +
-    `Points: ${stats.points || 0}`;
-}
-
-async function loadStats() {
+function renderMenu() {
   if (!state.user) return;
 
-  if (isFirebaseConfigured && !state.user.demo) {
-    try {
-      const userRef = doc(db, "users", state.user.username);
-      const snap = await getDoc(userRef);
-
-      if (snap.exists()) {
-        state.stats = snap.data();
-      } else {
-        state.stats = {
-          wins: 0,
-          losses: 0,
-          draws: 0,
-          games: 0,
-          points: 0
-        };
-      }
-    } catch (error) {
-      console.warn("Could not load Firestore stats:", error);
-      state.stats = getLocalStats(state.user.username);
-    }
-  } else {
-    state.stats = getLocalStats(state.user.username);
-  }
-
-  updateStatsLine();
+  $("#menu-username").textContent = state.userData?.displayName || state.user.username;
+  $("#menu-cash").textContent = state.userData?.cash ?? 0;
 }
 
-async function updateStatsAfterGame(points) {
-  if (!state.user) return;
-
-  const humanPoints = points[0];
-  const maxPoints = Math.max(...points);
-  const winnerCount = points.filter((p) => p === maxPoints).length;
-
-  const result =
-    humanPoints < maxPoints ? "loss" :
-    winnerCount > 1 ? "draw" :
-    "win";
-
-  if (isFirebaseConfigured && !state.user.demo) {
-    const userRef = doc(db, "users", state.user.username);
-
-    const data = {
-      games: increment(1),
-      points: increment(humanPoints),
-      updatedAt: new Date().toISOString()
-    };
-
-    if (result === "win") {
-      data.wins = increment(1);
-    }
-
-    if (result === "loss") {
-      data.losses = increment(1);
-    }
-
-    if (result === "draw") {
-      data.draws = increment(1);
-    }
-
-    try {
-      await updateDoc(userRef, data);
-    } catch (error) {
-      console.warn("Update failed, trying set:", error);
-
-      try {
-        await setDoc(
-          userRef,
-          {
-            username: state.user.username,
-            uid: state.user.uid,
-            wins: result === "win" ? 1 : 0,
-            losses: result === "loss" ? 1 : 0,
-            draws: result === "draw" ? 1 : 0,
-            games: 1,
-            points: humanPoints,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          },
-          { merge: true }
-        );
-      } catch (setError) {
-        console.warn("Could not save stats:", setError);
-      }
-    }
-  } else {
-    const stats = getLocalStats(state.user.username);
-
-    stats.games = (stats.games || 0) + 1;
-    stats.points = (stats.points || 0) + humanPoints;
-
-    if (result === "win") {
-      stats.wins = (stats.wins || 0) + 1;
-    }
-
-    if (result === "loss") {
-      stats.losses = (stats.losses || 0) + 1;
-    }
-
-    if (result === "draw") {
-      stats.draws = (stats.draws || 0) + 1;
-    }
-
-    saveLocalStats(state.user.username, stats);
-  }
-
-  await loadStats();
-}
-
-function makeCardElement(card, isSelected = false) {
+function makeCardElement(card, selected = false) {
   const el = document.createElement("div");
   el.className = "card";
 
@@ -267,7 +188,7 @@ function makeCardElement(card, isSelected = false) {
     el.classList.add("red");
   }
 
-  if (isSelected) {
+  if (selected) {
     el.classList.add("selected");
   }
 
@@ -279,16 +200,204 @@ function makeCardElement(card, isSelected = false) {
   return el;
 }
 
-function renderHand() {
+function renderPlayerList() {
+  const playerList = $("#player-list");
+  playerList.innerHTML = "";
+
+  const spectators = $("#spectator-list");
+  spectators.innerHTML = "";
+
+  if (!state.room) return;
+
+  const players = [...state.room.players].sort((a, b) => a.seat - b.seat);
+
+  players.forEach((player) => {
+    const div = document.createElement("div");
+
+    div.className = "player-row";
+
+    if (state.room.status === "round_end") {
+      div.classList.add(player.ready ? "ready" : "not-ready");
+    }
+
+    const hostText = player.uid === state.room.hostId ? " [Host]" : "";
+    const botText = player.isBot ? " [Bot]" : "";
+    const readyText =
+      state.room.status === "round_end"
+        ? player.ready
+          ? " Ready"
+          : " Not Ready"
+        : "";
+
+    const submittedText =
+      state.room.status === "arranging"
+        ? player.submitted
+          ? " Submitted"
+          : " Arranging"
+        : "";
+
+    div.textContent =
+      `Seat ${player.seat + 1}: ` +
+      player.displayName +
+      hostText +
+      botText +
+      readyText +
+      submittedText;
+
+    playerList.appendChild(div);
+  });
+
+  state.room.spectators.forEach((spectator) => {
+    const div = document.createElement("div");
+    div.className = "player-row";
+    div.textContent = spectator.displayName;
+    spectators.appendChild(div);
+  });
+}
+
+function renderRoomInfo() {
+  if (!state.room) return;
+
+  $("#room-code").textContent = state.room.roomCode;
+  $("#room-status").textContent = state.room.status;
+  $("#room-round").textContent = state.room.roundNumber || 0;
+  $("#room-min-bet").textContent = state.room.settings.minBet;
+  $("#room-pot").textContent = state.room.pot || 0;
+  $("#room-bot-level").textContent = state.room.settings.botLevel;
+
+  const timerElement = $("#room-timer");
+
+  if (state.room.phaseEndsAt) {
+    const secondsLeft = Math.max(
+      0,
+      Math.ceil((state.room.phaseEndsAt - Date.now()) / 1000)
+    );
+
+    timerElement.textContent = `${secondsLeft}s`;
+  } else {
+    timerElement.textContent = "Off";
+  }
+}
+
+function renderLobbySection() {
+  const lobbySection = $("#lobby-section");
+  const arrangeSection = $("#arrange-section");
+  const resultsSection = $("#results-section");
+
+  lobbySection.classList.add("hidden");
+  arrangeSection.classList.add("hidden");
+  resultsSection.classList.add("hidden");
+
+  if (!state.room) return;
+
+  const status = state.room.status;
+
+  if (status === "lobby" || status === "round_end") {
+    lobbySection.classList.remove("hidden");
+  }
+
+  if (status === "arranging" || status === "scoring") {
+    if (currentUserInRoomPlayers()) {
+      arrangeSection.classList.remove("hidden");
+      renderArrangeSection();
+    } else {
+      lobbySection.classList.remove("hidden");
+      setRoomMessage("Round in progress. You are spectating.");
+    }
+  }
+
+  if (status === "round_end") {
+    resultsSection.classList.remove("hidden");
+    renderResultsSection();
+  }
+
+  const startButton = $("#start-room-button");
+  const fillBotsButton = $("#fill-bots-button");
+  const takeSeatButton = $("#take-seat-button");
+
+  startButton.classList.toggle("hidden", !isHost() || !["lobby", "round_end"].includes(status));
+  fillBotsButton.classList.toggle("hidden", !isHost() || !["lobby", "round_end"].includes(status));
+
+  const canTakeSeat =
+    currentUserInRoomSpectators() &&
+    ["lobby", "round_end"].includes(status);
+
+  takeSeatButton.classList.toggle("hidden", !canTakeSeat);
+
+  renderPlayerList();
+}
+
+function renderArrangeSection() {
+  const arrangeStatus = $("#arrange-status");
+
+  if (!state.handData) {
+    arrangeStatus.textContent = "Waiting for cards...";
+    return;
+  }
+
+  if (state.handData.submitted) {
+    arrangeStatus.textContent = "You submitted. Waiting for other players...";
+    disableArrangeControls(true);
+    renderAssignedCards();
+    renderHandCards();
+    return;
+  }
+
+  arrangeStatus.textContent = "Arrange your cards.";
+  disableArrangeControls(false);
+  renderAssignedCards();
+  renderHandCards();
+}
+
+function disableArrangeControls(disabled) {
+  $("#assign-front-button").disabled = disabled;
+  $("#assign-middle-button").disabled = disabled;
+  $("#assign-back-button").disabled = disabled;
+  $("#auto-arrange-button").disabled = disabled;
+  $("#clear-arrangement-button").disabled = disabled;
+  $("#submit-arrangement-button").disabled = disabled;
+}
+
+function renderAssignedCards() {
+  renderAssignedSection("front", $("#front-cards"));
+  renderAssignedSection("middle", $("#middle-cards"));
+  renderAssignedSection("back", $("#back-cards"));
+}
+
+function renderAssignedSection(sectionName, container) {
+  container.innerHTML = "";
+
+  const cards = sortCards(state.arrangement[sectionName]);
+
+  cards.forEach((card) => {
+    const cardElement = makeCardElement(card, false);
+
+    cardElement.addEventListener("click", () => {
+      state.arrangement[sectionName] = state.arrangement[sectionName].filter(
+        (c) => c !== card
+      );
+
+      state.selectedCards.clear();
+      renderArrangeSection();
+    });
+
+    container.appendChild(cardElement);
+  });
+}
+
+function renderHandCards() {
   const container = $("#hand-cards");
   container.innerHTML = "";
 
+  if (!state.handData || !state.handData.hand) return;
+
   const assigned = assignedCardsSet();
 
-  const unassigned = state.hands[0].filter((card) => !assigned.has(card));
+  const hand = state.handData.hand.filter((card) => !assigned.has(card));
 
-  unassigned.forEach((card) => {
-    const cardElement = makeCardElement(card, state.selectedCards.has(card));
+  sortCards(hand).forEach((card) => {
+    const selected = state.selectedCards.has(card);
+    const cardElement = makeCardElement(card, selected);
 
     cardElement.addEventListener("click", () => {
       if (state.selectedCards.has(card)) {
@@ -297,249 +406,401 @@ function renderHand() {
         state.selectedCards.add(card);
       }
 
-      renderArrangeScreen();
+      renderHandCards();
     });
 
     container.appendChild(cardElement);
   });
-}
-
-function renderSection(sectionName) {
-  const container = $(`#${sectionName}-cards`);
-  container.innerHTML = "";
-
-  const cards = sortCards(state.humanArrangement[sectionName]);
-
-  cards.forEach((card) => {
-    const cardElement = makeCardElement(card, false);
-
-    cardElement.addEventListener("click", () => {
-      state.humanArrangement[sectionName] = state.humanArrangement[
-        sectionName
-      ].filter((c) => c !== card);
-
-      state.selectedCards.clear();
-      renderArrangeScreen();
-    });
-
-    container.appendChild(cardElement);
-  });
-}
-
-function renderArrangeScreen() {
-  renderSection("front");
-  renderSection("middle");
-  renderSection("back");
-  renderHand();
 }
 
 function assignSelected(sectionName) {
   const selected = [...state.selectedCards];
 
   if (selected.length === 0) {
-    setMessage("Select cards first.");
+    setRoomMessage("Select cards first.");
     return;
   }
 
   const capacity = sectionName === "front" ? 3 : 5;
-  const current = state.humanArrangement[sectionName];
+  const current = state.arrangement[sectionName];
 
   if (current.length + selected.length > capacity) {
-    setMessage(
-      `${capitalize(sectionName)} can only hold ${capacity} cards.`
-    );
+    setRoomMessage(`${sectionName} can only hold ${capacity} cards.`);
     return;
   }
 
-  state.humanArrangement[sectionName] = [
+  state.arrangement[sectionName] = [
     ...current,
     ...selected
   ];
 
   state.selectedCards.clear();
-  setMessage(`${capitalize(sectionName)} updated.`);
-  renderArrangeScreen();
+  renderArrangeSection();
 }
 
-function startGame() {
-  const deck = shuffle(buildDeck());
+async function submitHumanArrangement() {
+  const arrangement = state.arrangement;
 
-  state.hands = [
-    sortCards(deck.slice(0, 13)),
-    sortCards(deck.slice(13, 26)),
-    sortCards(deck.slice(26, 39)),
-    sortCards(deck.slice(39, 52))
-  ];
-
-  state.humanArrangement = emptyArrangement();
-  state.selectedCards.clear();
-
-  setMessage("Select cards, then assign them to Front, Middle, or Back.");
-
-  renderArrangeScreen();
-  showScreen("arrange");
-}
-
-function disableArrangeButtons(disabled) {
-  $("#auto-button").disabled = disabled;
-  $("#clear-button").disabled = disabled;
-  $("#submit-button").disabled = disabled;
-  $("#assign-front").disabled = disabled;
-  $("#assign-middle").disabled = disabled;
-  $("#assign-back").disabled = disabled;
-}
-
-function scoreGame(arrangements) {
-  const points = [0, 0, 0, 0];
-
-  for (let i = 0; i < arrangements.length; i++) {
-    for (let j = i + 1; j < arrangements.length; j++) {
-      const result = compareArrangements(arrangements[i], arrangements[j]);
-
-      let playerOnePoints = 0;
-      let playerTwoPoints = 0;
-
-      [result.front, result.middle, result.back].forEach((value) => {
-        if (value > 0) {
-          playerOnePoints++;
-        } else if (value < 0) {
-          playerTwoPoints++;
-        }
-      });
-
-      if (playerOnePoints === 3) {
-        playerOnePoints += 3;
-      }
-
-      if (playerTwoPoints === 3) {
-        playerTwoPoints += 3;
-      }
-
-      points[i] += playerOnePoints;
-      points[j] += playerTwoPoints;
-    }
+  if (
+    arrangement.front.length !== 3 ||
+    arrangement.middle.length !== 5 ||
+    arrangement.back.length !== 5
+  ) {
+    setRoomMessage("You need Front 3, Middle 5, Back 5.");
+    return;
   }
 
-  return points;
+  if (!isLegalArrangement(arrangement)) {
+    setRoomMessage("Illegal arrangement. Back must beat Middle, Middle must beat Front.");
+    return;
+  }
+
+  try {
+    await submitArrangement(state.roomId, state.user.uid, arrangement);
+    setRoomMessage("Submitted.");
+  } catch (error) {
+    console.error(error);
+    setRoomMessage("Submit failed.");
+  }
 }
 
-function renderMiniCards(cards) {
-  const container = document.createElement("div");
-  container.className = "mini-cards";
+async function autoSubmitIfNeeded() {
+  if (state.autoSubmitting) return;
 
-  sortCards(cards).forEach((card) => {
-    const mini = document.createElement("span");
-    mini.className = "mini-card";
+  if (!state.room || !state.user || !state.handData) return;
 
-    if (isRedSuit(suitOf(card))) {
-      mini.classList.add("red");
+  if (state.room.status !== "arranging") return;
+
+  if (!currentUserInRoomPlayers()) return;
+
+  if (state.handData.submitted) return;
+
+  if (!state.room.phaseEndsAt) return;
+
+  if (Date.now() < state.room.phaseEndsAt) return;
+
+  state.autoSubmitting = true;
+
+  try {
+    let arrangement = state.arrangement;
+
+    const isValid =
+      arrangement.front.length === 3 &&
+      arrangement.middle.length === 5 &&
+      arrangement.back.length === 5 &&
+      isLegalArrangement(arrangement);
+
+    if (!isValid) {
+      arrangement = botArrangeHand(state.handData.hand, "hard");
     }
 
-    mini.textContent = `${rankOf(card)}${suitSymbol(suitOf(card))}`;
-    container.appendChild(mini);
-  });
-
-  return container;
+    await submitArrangement(state.roomId, state.user.uid, arrangement);
+  } catch (error) {
+    console.error(error);
+  } finally {
+    state.autoSubmitting = false;
+  }
 }
 
-function renderResults() {
-  const table = $("#result-table");
-  table.innerHTML = "";
+function renderResultsSection() {
+  const results = state.room.results;
 
-  const headerRow = table.insertRow();
+  const resultSummary = $("#result-summary");
+  const resultTable = $("#result-table");
+  const resultDetails = $("#result-details");
 
-  ["Player", "Front", "Middle", "Back", "Points"].forEach((text) => {
+  if (!results) {
+    resultSummary.textContent = "Waiting for results...";
+    resultTable.innerHTML = "";
+    resultDetails.innerHTML = "";
+    return;
+  }
+
+  resultSummary.textContent =
+    `Round ${results.roundNumber} | ` +
+    `Pot ${results.pot} | ` +
+    `Min Bet ${results.minBet}`;
+
+  resultTable.innerHTML = "";
+
+  const header = resultTable.insertRow();
+
+  [
+    "Rank",
+    "Player",
+    "Type",
+    "Points",
+    "Bet",
+    "Prize",
+    "Net"
+  ].forEach((text) => {
     const th = document.createElement("th");
     th.textContent = text;
-    headerRow.appendChild(th);
+    header.appendChild(th);
   });
 
-  state.results.players.forEach((player, index) => {
-    const row = table.insertRow();
+  results.rankings.forEach((ranking, index) => {
+    const row = resultTable.insertRow();
 
-    const nameCell = row.insertCell();
-    nameCell.textContent = player.name;
-
-    const frontCell = row.insertCell();
-    frontCell.appendChild(renderMiniCards(player.arrangement.front));
-
-    const middleCell = row.insertCell();
-    middleCell.appendChild(renderMiniCards(player.arrangement.middle));
-
-    const backCell = row.insertCell();
-    backCell.appendChild(renderMiniCards(player.arrangement.back));
-
-    const pointsCell = row.insertCell();
-    pointsCell.textContent = state.results.points[index];
+    row.insertCell().textContent = index + 1;
+    row.insertCell().textContent = ranking.displayName;
+    row.insertCell().textContent = ranking.isBot ? "Bot" : "Human";
+    row.insertCell().textContent = ranking.points;
+    row.insertCell().textContent = ranking.isBot ? "-" : ranking.bet;
+    row.insertCell().textContent = ranking.isBot ? "-" : ranking.prize;
+    row.insertCell().textContent = ranking.isBot ? "-" : ranking.net;
   });
 
-  const humanPoints = state.results.points[0];
-  const maxPoints = Math.max(...state.results.points);
-  const winnerCount = state.results.points.filter((p) => p === maxPoints).length;
+  resultDetails.innerHTML = "";
 
-  if (humanPoints === maxPoints && winnerCount === 1) {
-    $("#result-message").textContent = "You win!";
-  } else if (humanPoints === maxPoints) {
-    $("#result-message").textContent = "You tied for first place.";
-  } else {
-    $("#result-message").textContent =
-      `You scored ${humanPoints}. Winner scored ${maxPoints}.`;
+  results.rankings.forEach((ranking) => {
+    const block = document.createElement("div");
+    block.className = "details-block";
+
+    const title = document.createElement("h4");
+    title.textContent = `${ranking.displayName} details`;
+    block.appendChild(title);
+
+    const details = results.details[ranking.uid] || [];
+
+    if (details.length === 0) {
+      const empty = document.createElement("div");
+      empty.textContent = "No details.";
+      block.appendChild(empty);
+    }
+
+    details.forEach((detail) => {
+      const row = document.createElement("div");
+
+      const rowText = (value) => {
+        if (value > 0) return "W";
+        if (value < 0) return "L";
+        return "T";
+      };
+
+      row.innerHTML = `
+        vs ${detail.opponentName}:
+        Front <span class="${detail.rows.front > 0 ? "win" : detail.rows.front < 0 ? "loss" : "tie"}">${rowText(detail.rows.front)}</span>
+        Middle <span class="${detail.rows.middle > 0 ? "win" : detail.rows.middle < 0 ? "loss" : "tie"}">${rowText(detail.rows.middle)}</span>
+        Back <span class="${detail.rows.back > 0 ? "win" : detail.rows.back < 0 ? "loss" : "tie"}">${rowText(detail.rows.back)}</span>
+        | Points ${detail.total}
+        ${detail.scoop ? "| Scoop +3" : ""}
+      `;
+
+      block.appendChild(row);
+    });
+
+    resultDetails.appendChild(block);
+  });
+
+  renderReadyArea();
+}
+
+function renderReadyArea() {
+  const readyList = $("#ready-list");
+  const readyButton = $("#ready-button");
+  const forceStartButton = $("#force-start-button");
+
+  readyList.innerHTML = "";
+
+  if (!state.room || state.room.status !== "round_end") return;
+
+  const players = [...state.room.players].sort((a, b) => a.seat - b.seat);
+
+  players.forEach((player) => {
+    const div = document.createElement("div");
+    div.className = `player-row ${player.ready ? "ready" : "not-ready"}`;
+    div.textContent = `${player.displayName}: ${player.ready ? "Ready" : "Not Ready"}`;
+    readyList.appendChild(div);
+  });
+
+  const me = currentUserPlayerObject();
+
+  const showReadyButton =
+    me &&
+    !me.isBot &&
+    !me.ready &&
+    state.userData &&
+    Number(state.userData.cash) >= Number(state.room.settings.minBet);
+
+  readyButton.classList.toggle("hidden", !showReadyButton);
+
+  const showForceStart = isHost();
+
+  forceStartButton.classList.toggle("hidden", !showForceStart);
+}
+
+function renderRoom() {
+  if (!state.room) return;
+
+  if (state.room.roundNumber !== state.roundInitialized) {
+    state.arrangement = emptyArrangement();
+    state.selectedCards.clear();
+    state.roundInitialized = state.room.roundNumber;
+  }
+
+  renderRoomInfo();
+  renderLobbySection();
+  manageHandListener();
+}
+
+function manageHandListener() {
+  const shouldListen =
+    state.room &&
+    state.user &&
+    state.room.status === "arranging" &&
+    currentUserInRoomPlayers();
+
+  if (shouldListen && !state.unsubHand) {
+    state.unsubHand = listenOwnHand(state.roomId, state.user.uid, (snapshot) => {
+      state.handData = snapshot.exists() ? snapshot.data() : null;
+
+      if (state.room && state.room.status === "arranging") {
+        renderArrangeSection();
+      }
+    });
+  }
+
+  if (!shouldListen && state.unsubHand) {
+    state.unsubHand();
+    state.unsubHand = null;
+    state.handData = null;
   }
 }
 
-function finishGame(arrangements) {
-  const players = [
-    {
-      name: state.user.username,
-      arrangement: arrangements[0],
-      isBot: false
-    },
-    {
-      name: "Bot 1",
-      arrangement: arrangements[1],
-      isBot: true
-    },
-    {
-      name: "Bot 2",
-      arrangement: arrangements[2],
-      isBot: true
-    },
-    {
-      name: "Bot 3",
-      arrangement: arrangements[3],
-      isBot: true
+async function hostController() {
+  if (!state.room || !state.user) return;
+
+  if (state.room.hostId !== state.user.uid) return;
+
+  if (state.hostBusy) return;
+
+  const room = state.room;
+
+  if (room.status === "arranging") {
+    const allSubmitted = room.players.every((player) => player.submitted);
+
+    if (allSubmitted) {
+      state.hostBusy = true;
+
+      try {
+        await finishRound(room.roomCode, state.user);
+      } catch (error) {
+        console.error(error);
+        setRoomMessage("Failed to finish round.");
+      } finally {
+        state.hostBusy = false;
+      }
     }
-  ];
 
-  const points = scoreGame(arrangements);
+    return;
+  }
 
-  state.results = {
-    players,
-    points
-  };
+  if (room.status === "round_end") {
+    const humans = room.players.filter((player) => !player.isBot);
+    const readyHumans = humans.filter((player) => player.ready);
 
-  renderResults();
-  showScreen("result");
-  updateStatsAfterGame(points);
+    if (humans.length > 0 && readyHumans.length === humans.length) {
+      state.hostBusy = true;
+
+      try {
+        await sleep(800);
+        await startRound(room.roomCode, state.user);
+      } catch (error) {
+        console.error(error);
+        setRoomMessage(error.message || "Failed to start next round.");
+      } finally {
+        state.hostBusy = false;
+      }
+
+      return;
+    }
+
+    if (room.phaseEndsAt && Date.now() > room.phaseEndsAt) {
+      if (readyHumans.length > 0) {
+        state.hostBusy = true;
+
+        try {
+          await replaceUnreadyWithBots(room.roomCode);
+          await startRound(room.roomCode, state.user);
+        } catch (error) {
+          console.error(error);
+          setRoomMessage(error.message || "Failed to start after timer.");
+        } finally {
+          state.hostBusy = false;
+        }
+      }
+    }
+  }
 }
 
-watchAuth(async (user) => {
+async function loadAdminRoomSettings() {
+  if (!state.room) {
+    setAdminMessage("You are not in a room.");
+    return;
+  }
+
+  $("#admin-room-min-bet").value = state.room.settings.minBet;
+  $("#admin-room-bot-level").value = state.room.settings.botLevel;
+  $("#admin-room-arrange-timer").value = state.room.settings.arrangeTimerSeconds;
+  $("#admin-room-ready-timer").value = state.room.settings.readyTimerSeconds;
+  $("#admin-room-auto-fill-bots").checked = Boolean(state.room.settings.autoFillBots);
+  $("#admin-room-scoop-bonus").checked = Boolean(state.room.settings.scoopBonus);
+}
+
+function showAdminScreen() {
+  if (!state.adminLoggedIn) {
+    const password = prompt("Enter admin password:");
+
+    if (password !== ADMIN_PASSWORD) {
+      alert("Wrong admin password.");
+      return;
+    }
+
+    state.adminLoggedIn = true;
+    sessionStorage.setItem("adminLoggedIn", "true");
+  }
+
+  loadAdminRoomSettings();
+  showScreen("admin");
+}
+
+watchAuth((user) => {
   state.user = user;
 
+  if (state.unsubUser) {
+    state.unsubUser();
+    state.unsubUser = null;
+  }
+
   if (!user) {
+    clearRoomState();
     showScreen("login");
     return;
   }
 
-  $("#welcome-name").textContent = user.username;
+  state.unsubUser = listenUser(user.username, (userData) => {
+    state.userData = userData;
+    renderMenu();
+    renderReadyArea();
+  });
 
-  $("#firebase-mode").textContent = isFirebaseConfigured
-    ? "Firebase mode enabled."
-    : "Demo mode. Configure /js/config.js to enable Firebase.";
+  renderMenu();
 
-  await loadStats();
-  showScreen("menu");
+  if (state.roomId) {
+    enterRoom(state.roomId);
+  } else {
+    showScreen("menu");
+  }
 });
+
+setInterval(() => {
+  if (!state.room) return;
+
+  renderRoomInfo();
+  autoSubmitIfNeeded();
+  hostController();
+}, 700);
 
 $("#login-button").addEventListener("click", async () => {
   const username = $("#login-username").value;
@@ -550,100 +811,342 @@ $("#login-button").addEventListener("click", async () => {
   try {
     await loginOrRegister(username, pin);
   } catch (error) {
-    $("#login-error").textContent = friendlyAuthError(error);
+    $("#login-error").textContent = error.message || "Login failed.";
   }
 });
 
 $("#logout-button").addEventListener("click", async () => {
+  clearRoomState();
   await logoutUser();
 });
 
-$("#play-button").addEventListener("click", () => {
-  startGame();
+$("#show-create-room-button").addEventListener("click", () => {
+  $("#create-room-form").classList.remove("hidden");
+  $("#join-room-form").classList.add("hidden");
 });
 
-$("#quit-button").addEventListener("click", () => {
-  showScreen("menu");
+$("#cancel-create-room-button").addEventListener("click", () => {
+  $("#create-room-form").classList.add("hidden");
 });
 
-$("#assign-front").addEventListener("click", () => {
+$("#show-join-room-button").addEventListener("click", () => {
+  $("#join-room-form").classList.remove("hidden");
+  $("#create-room-form").classList.add("hidden");
+});
+
+$("#cancel-join-room-button").addEventListener("click", () => {
+  $("#join-room-form").classList.add("hidden");
+});
+
+$("#create-room-button").addEventListener("click", async () => {
+  $("#create-room-error").textContent = "";
+
+  if (!state.user || !state.userData) {
+    $("#create-room-error").textContent = "Not logged in.";
+    return;
+  }
+
+  const settings = {
+    minBet: Number($("#create-min-bet").value) || 0,
+    arrangeTimerSeconds: Number($("#create-arrange-timer").value) || 0,
+    readyTimerSeconds: Number($("#create-ready-timer").value) || 0,
+    botLevel: $("#create-bot-level").value,
+    autoFillBots: $("#create-auto-fill-bots").checked,
+    scoopBonus: $("#create-scoop-bonus").checked
+  };
+
+  try {
+    const code = await createRoom(
+      {
+        ...state.user,
+        displayName: state.userData.displayName || state.user.username
+      },
+      settings
+    );
+
+    $("#create-room-form").classList.add("hidden");
+    await enterRoom(code);
+  } catch (error) {
+    $("#create-room-error").textContent = error.message || "Failed to create room.";
+  }
+});
+
+$("#join-room-button").addEventListener("click", async () => {
+  $("#join-room-error").textContent = "";
+
+  if (!state.user || !state.userData) {
+    $("#join-room-error").textContent = "Not logged in.";
+    return;
+  }
+
+  const code = $("#join-room-code").value;
+
+  try {
+    const roomId = await joinRoomByCode(
+      state.user,
+      code,
+      state.userData.displayName || state.user.username
+    );
+
+    $("#join-room-form").classList.add("hidden");
+    await enterRoom(roomId);
+  } catch (error) {
+    $("#join-room-error").textContent = error.message || "Failed to join room.";
+  }
+});
+
+$("#leave-room-button").addEventListener("click", async () => {
+  try {
+    await leaveRoom(state.user, state.roomId);
+    clearRoomState();
+    showScreen("menu");
+  } catch (error) {
+    setRoomMessage(error.message || "Cannot leave room.");
+  }
+});
+
+$("#start-room-button").addEventListener("click", async () => {
+  try {
+    await startRound(state.roomId, state.user);
+  } catch (error) {
+    setRoomMessage(error.message || "Failed to start round.");
+  }
+});
+
+$("#fill-bots-button").addEventListener("click", async () => {
+  try {
+    await fillBotsInRoom(state.roomId);
+  } catch (error) {
+    setRoomMessage(error.message || "Failed to fill bots.");
+  }
+});
+
+$("#take-seat-button").addEventListener("click", async () => {
+  try {
+    await takeSeat(
+      state.user,
+      state.roomId,
+      state.userData?.displayName || state.user.username
+    );
+  } catch (error) {
+    setRoomMessage(error.message || "Failed to take seat.");
+  }
+});
+
+$("#assign-front-button").addEventListener("click", () => {
   assignSelected("front");
 });
 
-$("#assign-middle").addEventListener("click", () => {
+$("#assign-middle-button").addEventListener("click", () => {
   assignSelected("middle");
 });
 
-$("#assign-back").addEventListener("click", () => {
+$("#assign-back-button").addEventListener("click", () => {
   assignSelected("back");
 });
 
-$("#auto-button").addEventListener("click", () => {
-  if (!state.hands.length) return;
+$("#auto-arrange-button").addEventListener("click", () => {
+  if (!state.handData || !state.handData.hand) return;
 
-  setMessage("Auto arranging...");
-
-  setTimeout(() => {
-    state.humanArrangement = botArrangeHand(state.hands[0], "hard");
-    state.selectedCards.clear();
-    setMessage("Auto arranged. Check your hand and submit.");
-    renderArrangeScreen();
-  }, 50);
-});
-
-$("#clear-button").addEventListener("click", () => {
-  state.humanArrangement = emptyArrangement();
+  state.arrangement = botArrangeHand(state.handData.hand, "hard");
   state.selectedCards.clear();
-  setMessage("Cleared.");
-  renderArrangeScreen();
+  renderArrangeSection();
 });
 
-$("#submit-button").addEventListener("click", async () => {
-  const arrangement = state.humanArrangement;
+$("#clear-arrangement-button").addEventListener("click", () => {
+  state.arrangement = emptyArrangement();
+  state.selectedCards.clear();
+  renderArrangeSection();
+});
 
-  if (
-    arrangement.front.length !== 3 ||
-    arrangement.middle.length !== 5 ||
-    arrangement.back.length !== 5
-  ) {
-    setMessage("You need Front 3, Middle 5, and Back 5 cards.");
+$("#submit-arrangement-button").addEventListener("click", async () => {
+  await submitHumanArrangement();
+});
+
+$("#ready-button").addEventListener("click", async () => {
+  try {
+    await setReady(state.roomId, state.user.uid, true);
+  } catch (error) {
+    setRoomMessage(error.message || "Failed to ready.");
+  }
+});
+
+$("#force-start-button").addEventListener("click", async () => {
+  try {
+    await replaceUnreadyWithBots(state.roomId);
+    await startRound(state.roomId, state.user);
+  } catch (error) {
+    setRoomMessage(error.message || "Failed force start.");
+  }
+});
+
+$("#admin-button").addEventListener("click", showAdminScreen);
+
+$("#room-admin-button").addEventListener("click", showAdminScreen);
+
+$("#admin-back-button").addEventListener("click", () => {
+  if (state.roomId) {
+    showScreen("room");
+  } else {
+    showScreen("menu");
+  }
+});
+
+$("#admin-load-player-button").addEventListener("click", async () => {
+  const username = $("#admin-player-username").value.trim().toLowerCase();
+
+  if (!username) {
+    setAdminMessage("Enter a username.");
     return;
   }
 
-  if (!isLegalArrangement(arrangement)) {
-    setMessage(
-      "Illegal arrangement. Back must be stronger than Middle, and Middle stronger than Front."
-    );
+  const userData = await getUserData(username);
+
+  if (!userData) {
+    $("#admin-player-info").textContent = "User not found.";
     return;
   }
 
-  disableArrangeButtons(true);
-  setMessage("Bots are arranging their hands...");
+  $("#admin-player-info").innerHTML = `
+    <div>Username: ${userData.username}</div>
+    <div>Display Name: ${userData.displayName}</div>
+    <div>Cash: ${userData.cash}</div>
+    <div>Games: ${userData.games || 0}</div>
+    <div>Wins: ${userData.wins || 0}</div>
+    <div>Points: ${userData.points || 0}</div>
+  `;
 
-  await sleep(80);
+  $("#admin-display-name").value = userData.displayName || "";
+});
+
+$("#admin-save-name-button").addEventListener("click", async () => {
+  const username = $("#admin-player-username").value.trim().toLowerCase();
+  const displayName = $("#admin-display-name").value.trim();
+
+  if (!username || !displayName) {
+    setAdminMessage("Username and display name required.");
+    return;
+  }
 
   try {
-    const botArrangements = state.hands
-      .slice(1)
-      .map((hand) => botArrangeHand(hand, "normal"));
-
-    await sleep(700);
-
-    finishGame([
-      arrangement,
-      botArrangements[0],
-      botArrangements[1],
-      botArrangements[2]
-    ]);
+    await updateDisplayName(username, displayName, state.user?.username || "admin");
+    setAdminMessage("Display name updated.");
   } catch (error) {
-    console.error(error);
-    setMessage("Something went wrong while bots were playing.");
-  } finally {
-    disableArrangeButtons(false);
+    setAdminMessage(error.message || "Failed to update display name.");
   }
 });
 
-$("#continue-button").addEventListener("click", async () => {
-  await loadStats();
-  showScreen("menu");
+$("#admin-add-cash-button").addEventListener("click", async () => {
+  const username = $("#admin-player-username").value.trim().toLowerCase();
+  const amount = Number($("#admin-cash-amount").value) || 0;
+  const reason = $("#admin-cash-reason").value;
+
+  if (!username || amount <= 0) {
+    setAdminMessage("Enter username and positive amount.");
+    return;
+  }
+
+  try {
+    await adjustCash(username, amount, "admin_transfer", reason, state.user?.username || "admin");
+    await addAdminLog(state.user?.username || "admin", "add_cash", username, { amount, reason });
+    setAdminMessage("Cash added.");
+  } catch (error) {
+    setAdminMessage(error.message || "Failed to add cash.");
+  }
+});
+
+$("#admin-deduct-cash-button").addEventListener("click", async () => {
+  const username = $("#admin-player-username").value.trim().toLowerCase();
+  const amount = Number($("#admin-cash-amount").value) || 0;
+  const reason = $("#admin-cash-reason").value;
+
+  if (!username || amount <= 0) {
+    setAdminMessage("Enter username and positive amount.");
+    return;
+  }
+
+  try {
+    await adjustCash(username, -amount, "admin_deduct", reason, state.user?.username || "admin");
+    await addAdminLog(state.user?.username || "admin", "deduct_cash", username, { amount, reason });
+    setAdminMessage("Cash deducted.");
+  } catch (error) {
+    setAdminMessage(error.message || "Failed to deduct cash.");
+  }
+});
+
+$("#admin-set-cash-button").addEventListener("click", async () => {
+  const username = $("#admin-player-username").value.trim().toLowerCase();
+  const amount = Number($("#admin-cash-amount").value) || 0;
+  const reason = $("#admin-cash-reason").value;
+
+  if (!username) {
+    setAdminMessage("Enter username.");
+    return;
+  }
+
+  try {
+    await setCash(username, amount, reason, state.user?.username || "admin");
+    await addAdminLog(state.user?.username || "admin", "set_cash", username, { amount, reason });
+    setAdminMessage("Cash set.");
+  } catch (error) {
+    setAdminMessage(error.message || "Failed to set cash.");
+  }
+});
+
+$("#admin-save-room-button").addEventListener("click", async () => {
+  if (!state.roomId) {
+    setAdminMessage("You are not in a room.");
+    return;
+  }
+
+  const settings = {
+    minBet: Number($("#admin-room-min-bet").value) || 0,
+    botLevel: $("#admin-room-bot-level").value,
+    arrangeTimerSeconds: Number($("#admin-room-arrange-timer").value) || 0,
+    readyTimerSeconds: Number($("#admin-room-ready-timer").value) || 0,
+    autoFillBots: $("#admin-room-auto-fill-bots").checked,
+    scoopBonus: $("#admin-room-scoop-bonus").checked
+  };
+
+  try {
+    await updateRoomSettings(state.roomId, settings);
+    await addAdminLog(state.user?.username || "admin", "room_settings", state.roomId, settings);
+    setAdminMessage("Room settings saved.");
+  } catch (error) {
+    setAdminMessage(error.message || "Failed to save room settings.");
+  }
+});
+
+$("#admin-fill-bots-button").addEventListener("click", async () => {
+  if (!state.roomId) {
+    setAdminMessage("You are not in a room.");
+    return;
+  }
+
+  try {
+    await fillBotsInRoom(state.roomId);
+    setAdminMessage("Bots filled.");
+  } catch (error) {
+    setAdminMessage(error.message || "Failed to fill bots.");
+  }
+});
+
+$("#admin-force-start-button").addEventListener("click", async () => {
+  if (!state.roomId) {
+    setAdminMessage("You are not in a room.");
+    return;
+  }
+
+  if (!isHost()) {
+    setAdminMessage("Only the room host can force start.");
+    return;
+  }
+
+  try {
+    await replaceUnreadyWithBots(state.roomId);
+    await startRound(state.roomId, state.user);
+    setAdminMessage("Round started.");
+  } catch (error) {
+    setAdminMessage(error.message || "Failed to force start.");
+  }
 });
