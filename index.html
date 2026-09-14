@@ -82,12 +82,13 @@
               Scoop Bonus +3
             </label>
           </div>
-<div class="form-group">
-  <label>
-    <input id="create-auto-arrange" type="checkbox" />
-    Auto-arrange cards (skip manual arrangement)
-  </label>
-</div>
+
+          <div class="form-group">
+            <label>
+              <input id="create-auto-arrange" type="checkbox" />
+              Auto-arrange cards (skip manual arrangement)
+            </label>
+          </div>
 
           <button id="create-room-button" class="primary-button">Create</button>
           <button id="cancel-create-room-button" class="secondary-button">Cancel</button>
@@ -111,87 +112,97 @@
 
     <!-- ROOM -->
     <section id="room-screen" class="screen hidden">
-      <div class="topbar">
-        <button id="leave-room-button" class="small-button">Leave Room</button>
-        <button id="room-admin-button" class="small-button">Admin</button>
-        <h2>Room <span id="room-code"></span></h2>
-      </div>
+      <div class="pg-table">
 
-      <div id="room-message" class="message"></div>
-
-      <div class="room-info panel-sub">
-        <div>Status: <strong id="room-status"></strong></div>
-        <div>Round: <strong id="room-round"></strong></div>
-        <div>Min Bet: <strong id="room-min-bet"></strong></div>
-        <div>Pot: <strong id="room-pot"></strong></div>
-        <div>Bot Level: <strong id="room-bot-level"></strong></div>
-        <div>Timer: <strong id="room-timer"></strong></div>
-      </div>
-
-      <div id="lobby-section" class="panel-sub hidden">
-        <h3>Players</h3>
-        <div id="player-list"></div>
-
-        <h3>Spectators</h3>
-        <div id="spectator-list"></div>
-
-        <div class="controls">
-          <button id="start-room-button" class="primary-button hidden">Start Game</button>
-          <button id="fill-bots-button" class="secondary-button hidden">Fill Bots</button>
-          <button id="take-seat-button" class="primary-button hidden">Take Seat</button>
+        <div class="pg-topbar">
+          <button id="leave-room-button" class="pg-icon-btn">✕</button>
+          <div class="pg-room-title">Room <span id="room-code"></span></div>
+          <button id="room-admin-button" class="pg-icon-btn">⚙</button>
         </div>
-      </div>
 
-      <div id="arrange-section" class="panel-sub hidden">
-        <div id="arrange-status" class="message"></div>
+        <div class="pg-seats" id="pg-seats"></div>
 
-        <div class="arrange-area">
-          <div class="arrange-block">
-            <h3>Front - 3</h3>
-            <div id="front-cards" class="card-row"></div>
-            <button id="assign-front-button" class="small-button">Assign Selected to Front</button>
-          </div>
+        <div class="pg-center">
+          <div class="pg-pill" id="pg-round">Round 0</div>
+          <div class="pg-timer" id="pg-timer">--</div>
+          <div class="pg-pill" id="pg-pot">Pot 0</div>
+        </div>
 
-          <div class="arrange-block">
-            <h3>Middle - 5</h3>
-            <div id="middle-cards" class="card-row"></div>
-            <button id="assign-middle-button" class="small-button">Assign Selected to Middle</button>
-          </div>
+        <div id="room-message" class="pg-message"></div>
 
-          <div class="arrange-block">
-            <h3>Back - 5</h3>
-            <div id="back-cards" class="card-row"></div>
-            <button id="assign-back-button" class="small-button">Assign Selected to Back</button>
+        <div class="hidden">
+          <span id="room-status"></span>
+          <span id="room-round"></span>
+          <span id="room-min-bet"></span>
+          <span id="room-pot"></span>
+          <span id="room-bot-level"></span>
+          <span id="room-timer"></span>
+        </div>
+
+        <!-- LOBBY -->
+        <div id="lobby-section" class="pg-panel hidden">
+          <h3>Lobby</h3>
+          <div id="player-list" class="pg-list"></div>
+          <div id="spectator-list" class="pg-list"></div>
+          <div class="pg-actions">
+            <button id="start-room-button" class="pg-btn primary hidden">Start Game</button>
+            <button id="fill-bots-button" class="pg-btn hidden">Fill Bots</button>
+            <button id="take-seat-button" class="pg-btn primary hidden">Take Seat</button>
           </div>
         </div>
 
-        <div class="hand-area">
-          <h3>Your Hand</h3>
-          <div id="hand-cards" class="card-row"></div>
+        <!-- ARRANGE -->
+        <div id="arrange-section" class="pg-panel hidden">
+          <div id="arrange-status" class="pg-message"></div>
+
+          <div class="pg-rows">
+            <div class="pg-row" data-row="front">
+              <button class="pg-row-tab" data-row="front">Front</button>
+              <div class="pg-row-cards" id="front-cards"></div>
+            </div>
+            <div class="pg-row" data-row="middle">
+              <button class="pg-row-tab" data-row="middle">Middle</button>
+              <div class="pg-row-cards" id="middle-cards"></div>
+            </div>
+            <div class="pg-row" data-row="back">
+              <button class="pg-row-tab" data-row="back">Back</button>
+              <div class="pg-row-cards" id="back-cards"></div>
+            </div>
+          </div>
+
+          <div class="pg-hand" id="hand-cards"></div>
+
+          <div class="pg-actions">
+            <button id="auto-arrange-button" class="pg-btn">Auto</button>
+            <button id="clear-arrangement-button" class="pg-btn">Clear</button>
+            <button id="submit-arrangement-button" class="pg-btn primary">Submit</button>
+          </div>
+
+          <div class="hidden">
+            <button id="assign-front-button"></button>
+            <button id="assign-middle-button"></button>
+            <button id="assign-back-button"></button>
+          </div>
         </div>
 
-        <div class="controls">
-          <button id="auto-arrange-button" class="secondary-button">Auto Arrange</button>
-          <button id="clear-arrangement-button" class="secondary-button">Clear</button>
-          <button id="submit-arrangement-button" class="primary-button">Submit</button>
+        <!-- RESULTS -->
+        <div id="results-section" class="pg-panel hidden">
+          <div id="result-summary" class="pg-result-summary"></div>
+          <div id="result-boards" class="pg-boards"></div>
+
+          <div class="hidden">
+            <table id="result-table"></table>
+            <div id="result-details"></div>
+          </div>
+
+          <div id="ready-list" class="pg-ready-list"></div>
+
+          <div class="pg-actions">
+            <button id="ready-button" class="pg-btn primary hidden">Ready for Next Round</button>
+            <button id="force-start-button" class="pg-btn hidden">Force Start</button>
+          </div>
         </div>
-      </div>
 
-      <div id="results-section" class="panel-sub hidden">
-        <h3>Results</h3>
-        <div id="result-summary" class="result-summary"></div>
-
-        <div class="table-wrap">
-          <table id="result-table"></table>
-        </div>
-
-        <div id="result-details"></div>
-
-        <div class="ready-area">
-          <div id="ready-list"></div>
-          <button id="ready-button" class="primary-button hidden">Ready for Next Round</button>
-          <button id="force-start-button" class="secondary-button hidden">Force Start</button>
-        </div>
       </div>
     </section>
 
