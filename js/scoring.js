@@ -10,13 +10,14 @@ function getPayoutPercentages(humanCount) {
 
 export function calculateResults(room, handsMap) {
   const players = room.players;
-  const settings = room.settings;
 
-  const points = {};
+  const matchWins = {};
+  const rowWins = {};
   const details = {};
 
   players.forEach((player) => {
-    points[player.uid] = 0;
+    matchWins[player.uid] = 0;
+    rowWins[player.uid] = 0;
     details[player.uid] = [];
   });
 
@@ -28,7 +29,11 @@ export function calculateResults(room, handsMap) {
       const handOne = handsMap[playerOne.uid];
       const handTwo = handsMap[playerTwo.uid];
 
-      if (!handOne || !handTwo || !handOne.arrangement || !handTwo.arrangement) {
+      if (!handOne || !handTwo) {
+        continue;
+      }
+
+      if (!handOne.arrangement || !handTwo.arrangement) {
         continue;
       }
 
@@ -43,56 +48,53 @@ export function calculateResults(room, handsMap) {
         return 0;
       };
 
-      const rowSigns = {
+      const rowsOne = {
         front: sign(comparison.front),
         middle: sign(comparison.middle),
         back: sign(comparison.back)
       };
 
-      const rowPointsOne = rowSigns.front + rowSigns.middle + rowSigns.back;
-      const rowPointsTwo = -rowPointsOne;
+      const rowsTwo = {
+        front: -rowsOne.front,
+        middle: -rowsOne.middle,
+        back: -rowsOne.back
+      };
 
-      let scoreOne = rowPointsOne;
-      let scoreTwo = rowPointsTwo;
+      const countWins = (rows) => {
+        return Object.values(rows).filter((value) => value === 1).length;
+      };
 
-      let scoopOne = false;
-      let scoopTwo = false;
+      const playerOneRowWins = countWins(rowsOne);
+      const playerTwoRowWins = countWins(rowsTwo);
 
-      if (settings.scoopBonus) {
-        if (rowPointsOne === 3) {
-          scoreOne += 3;
-          scoopOne = true;
-        }
+      let playerOneResult = "tie";
+      let playerTwoResult = "tie";
 
-        if (rowPointsOne === -3) {
-          scoreTwo += 3;
-          scoopTwo = true;
-        }
+      if (playerOneRowWins > playerTwoRowWins) {
+        matchWins[playerOne.uid] += 1;
+        playerOneResult = "win";
+        playerTwoResult = "lose";
+      } else if (playerTwoRowWins > playerOneRowWins) {
+        matchWins[playerTwo.uid] += 1;
+        playerOneResult = "lose";
+        playerTwoResult = "win";
       }
 
-      points[playerOne.uid] += scoreOne;
-      points[playerTwo.uid] += scoreTwo;
+      rowWins[playerOne.uid] += playerOneRowWins;
+      rowWins[playerTwo.uid] += playerTwoRowWins;
 
       details[playerOne.uid].push({
         opponentUid: playerTwo.uid,
         opponentName: playerTwo.displayName,
-        rows: rowSigns,
-        rowPoints: rowPointsOne,
-        scoop: scoopOne,
-        total: scoreOne
+        rows: rowsOne,
+        matchResult: playerOneResult
       });
 
       details[playerTwo.uid].push({
         opponentUid: playerOne.uid,
         opponentName: playerOne.displayName,
-        rows: {
-          front: -rowSigns.front,
-          middle: -rowSigns.middle,
-          back: -rowSigns.back
-        },
-        rowPoints: rowPointsTwo,
-        scoop: scoopTwo,
-        total: scoreTwo
+        rows: rowsTwo,
+        matchResult: playerTwoResult
       });
     }
   }
@@ -103,7 +105,8 @@ export function calculateResults(room, handsMap) {
       username: player.username,
       displayName: player.displayName,
       isBot: Boolean(player.isBot),
-      points: points[player.uid] || 0,
+      points: matchWins[player.uid] || 0,
+      rowWins: rowWins[player.uid] || 0,
       bet: 0,
       prize: 0,
       net: 0,
@@ -112,7 +115,11 @@ export function calculateResults(room, handsMap) {
   });
 
   rankings.sort((a, b) => {
-    return b.points - a.points || a.displayName.localeCompare(b.displayName);
+    return (
+      b.points - a.points ||
+      b.rowWins - a.rowWins ||
+      a.displayName.localeCompare(b.displayName)
+    );
   });
 
   let humanRank = 0;
@@ -145,7 +152,7 @@ export function calculateResults(room, handsMap) {
       ranking.prize = 0;
       ranking.net = 0;
     } else {
-      ranking.bet = Number(settings.minBet) || 0;
+      ranking.bet = Number(room.settings.minBet) || 0;
       ranking.net = ranking.prize - ranking.bet;
     }
   });
@@ -153,7 +160,7 @@ export function calculateResults(room, handsMap) {
   return {
     roundNumber: room.roundNumber,
     pot: room.pot || 0,
-    minBet: Number(settings.minBet) || 0,
+    minBet: Number(room.settings.minBet) || 0,
     rankings,
     details,
     calculatedAt: Date.now()
