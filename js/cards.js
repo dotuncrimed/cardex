@@ -1,28 +1,8 @@
-export const RANKS = [
-  "2",
-  "3",
-  "4",
-  "5",
-  "6",
-  "7",
-  "8",
-  "9",
-  "10",
-  "J",
-  "Q",
-  "K",
-  "A"
-];
-
+export const RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 export const SUITS = ["C", "D", "H", "S"];
 
-const RANK_VALUES = Object.fromEntries(
-  RANKS.map((rank, index) => [rank, index + 2])
-);
-
-const SUIT_VALUES = Object.fromEntries(
-  SUITS.map((suit, index) => [suit, index])
-);
+const RANK_VALUES = Object.fromEntries(RANKS.map((rank, index) => [rank, index + 2]));
+const SUIT_VALUES = Object.fromEntries(SUITS.map((suit, index) => [suit, index]));
 
 const SUIT_SYMBOLS = {
   C: "♣",
