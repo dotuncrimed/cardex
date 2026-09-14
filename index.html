@@ -3,103 +3,285 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Chinese Poker</title>
+  <title>Chinese Poker Multiplayer</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
   <div id="app">
 
-    <!-- LOGIN SCREEN -->
+    <!-- LOGIN -->
     <section id="login-screen" class="screen hidden">
       <div class="panel">
         <h1>Chinese Poker</h1>
         <p class="subtitle">Login with username and PIN.</p>
 
         <div class="form-group">
-          <label for="login-username">Username</label>
-          <input id="login-username" type="text" maxlength="20" placeholder="e.g. juan" autocomplete="off" />
+          <label>Username</label>
+          <input id="login-username" type="text" maxlength="20" autocomplete="off" />
         </div>
 
         <div class="form-group">
-          <label for="login-pin">PIN</label>
-          <input id="login-pin" type="password" maxlength="30" placeholder="Minimum 6 characters" />
+          <label>PIN</label>
+          <input id="login-pin" type="password" maxlength="30" />
         </div>
 
         <button id="login-button" class="primary-button">Login / Register</button>
         <p id="login-error" class="error"></p>
-
-        <p class="small-note">
-          This uses a dummy Firebase email like <br />
-          <code>username@chinesepoker.app</code>
-        </p>
       </div>
     </section>
 
-    <!-- MENU SCREEN -->
+    <!-- MENU -->
     <section id="menu-screen" class="screen hidden">
       <div class="panel">
         <h1>Chinese Poker</h1>
-        <p>Welcome, <strong id="welcome-name"></strong></p>
-        <p id="stats-line" class="stats-line"></p>
-        <p id="firebase-mode" class="small-note"></p>
+        <p>Welcome, <strong id="menu-username"></strong></p>
+        <p>Cash: <strong id="menu-cash">0</strong></p>
 
-        <button id="play-button" class="primary-button">Play vs Computer</button>
+        <button id="show-create-room-button" class="primary-button">Create Room</button>
+        <button id="show-join-room-button" class="primary-button">Join Room</button>
+        <button id="admin-button" class="secondary-button">Admin</button>
         <button id="logout-button" class="secondary-button">Logout</button>
+
+        <div id="create-room-form" class="hidden panel-sub">
+          <h3>Create Room</h3>
+
+          <div class="form-group">
+            <label>Minimum Bet</label>
+            <input id="create-min-bet" type="number" min="0" value="100" />
+          </div>
+
+          <div class="form-group">
+            <label>Arrange Timer Seconds</label>
+            <input id="create-arrange-timer" type="number" min="0" value="120" />
+          </div>
+
+          <div class="form-group">
+            <label>Ready Timer Seconds</label>
+            <input id="create-ready-timer" type="number" min="0" value="30" />
+          </div>
+
+          <div class="form-group">
+            <label>Bot Level</label>
+            <select id="create-bot-level">
+              <option value="easy">Easy</option>
+              <option value="normal" selected>Normal</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input id="create-auto-fill-bots" type="checkbox" checked />
+              Auto-fill empty seats with bots
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input id="create-scoop-bonus" type="checkbox" checked />
+              Scoop Bonus +3
+            </label>
+          </div>
+
+          <button id="create-room-button" class="primary-button">Create</button>
+          <button id="cancel-create-room-button" class="secondary-button">Cancel</button>
+          <p id="create-room-error" class="error"></p>
+        </div>
+
+        <div id="join-room-form" class="hidden panel-sub">
+          <h3>Join Room</h3>
+
+          <div class="form-group">
+            <label>Room Code</label>
+            <input id="join-room-code" type="text" maxlength="5" autocomplete="off" />
+          </div>
+
+          <button id="join-room-button" class="primary-button">Join</button>
+          <button id="cancel-join-room-button" class="secondary-button">Cancel</button>
+          <p id="join-room-error" class="error"></p>
+        </div>
       </div>
     </section>
 
-    <!-- ARRANGE SCREEN -->
-    <section id="arrange-screen" class="screen hidden">
+    <!-- ROOM -->
+    <section id="room-screen" class="screen hidden">
       <div class="topbar">
-        <button id="quit-button" class="small-button">Menu</button>
-        <h2>Arrange Your Hand</h2>
+        <button id="leave-room-button" class="small-button">Leave Room</button>
+        <button id="room-admin-button" class="small-button">Admin</button>
+        <h2>Room <span id="room-code"></span></h2>
       </div>
 
-      <div id="message" class="message"></div>
+      <div id="room-message" class="message"></div>
 
-      <div class="arrange-area">
-        <div class="arrange-block">
-          <h3>Front - 3 cards</h3>
-          <div id="front-cards" class="card-row"></div>
-          <button id="assign-front" class="small-button">Assign Selected to Front</button>
+      <div class="room-info panel-sub">
+        <div>Status: <strong id="room-status"></strong></div>
+        <div>Round: <strong id="room-round"></strong></div>
+        <div>Min Bet: <strong id="room-min-bet"></strong></div>
+        <div>Pot: <strong id="room-pot"></strong></div>
+        <div>Bot Level: <strong id="room-bot-level"></strong></div>
+        <div>Timer: <strong id="room-timer"></strong></div>
+      </div>
+
+      <div id="lobby-section" class="panel-sub hidden">
+        <h3>Players</h3>
+        <div id="player-list"></div>
+
+        <h3>Spectators</h3>
+        <div id="spectator-list"></div>
+
+        <div class="controls">
+          <button id="start-room-button" class="primary-button hidden">Start Game</button>
+          <button id="fill-bots-button" class="secondary-button hidden">Fill Bots</button>
+          <button id="take-seat-button" class="primary-button hidden">Take Seat</button>
+        </div>
+      </div>
+
+      <div id="arrange-section" class="panel-sub hidden">
+        <div id="arrange-status" class="message"></div>
+
+        <div class="arrange-area">
+          <div class="arrange-block">
+            <h3>Front - 3</h3>
+            <div id="front-cards" class="card-row"></div>
+            <button id="assign-front-button" class="small-button">Assign Selected to Front</button>
+          </div>
+
+          <div class="arrange-block">
+            <h3>Middle - 5</h3>
+            <div id="middle-cards" class="card-row"></div>
+            <button id="assign-middle-button" class="small-button">Assign Selected to Middle</button>
+          </div>
+
+          <div class="arrange-block">
+            <h3>Back - 5</h3>
+            <div id="back-cards" class="card-row"></div>
+            <button id="assign-back-button" class="small-button">Assign Selected to Back</button>
+          </div>
         </div>
 
-        <div class="arrange-block">
-          <h3>Middle - 5 cards</h3>
-          <div id="middle-cards" class="card-row"></div>
-          <button id="assign-middle" class="small-button">Assign Selected to Middle</button>
+        <div class="hand-area">
+          <h3>Your Hand</h3>
+          <div id="hand-cards" class="card-row"></div>
         </div>
 
-        <div class="arrange-block">
-          <h3>Back - 5 cards</h3>
-          <div id="back-cards" class="card-row"></div>
-          <button id="assign-back" class="small-button">Assign Selected to Back</button>
+        <div class="controls">
+          <button id="auto-arrange-button" class="secondary-button">Auto Arrange</button>
+          <button id="clear-arrangement-button" class="secondary-button">Clear</button>
+          <button id="submit-arrangement-button" class="primary-button">Submit</button>
         </div>
       </div>
 
-      <div class="hand-area">
-        <h3>Your Cards</h3>
-        <div id="hand-cards" class="card-row"></div>
-      </div>
-
-      <div class="controls">
-        <button id="auto-button" class="secondary-button">Auto Arrange</button>
-        <button id="clear-button" class="secondary-button">Clear</button>
-        <button id="submit-button" class="primary-button">Submit</button>
-      </div>
-    </section>
-
-    <!-- RESULT SCREEN -->
-    <section id="result-screen" class="screen hidden">
-      <div class="panel wide-panel">
-        <h2>Results</h2>
-        <p id="result-message" class="result-message"></p>
+      <div id="results-section" class="panel-sub hidden">
+        <h3>Results</h3>
+        <div id="result-summary" class="result-summary"></div>
 
         <div class="table-wrap">
           <table id="result-table"></table>
         </div>
 
-        <button id="continue-button" class="primary-button">Continue</button>
+        <div id="result-details"></div>
+
+        <div class="ready-area">
+          <div id="ready-list"></div>
+          <button id="ready-button" class="primary-button hidden">Ready for Next Round</button>
+          <button id="force-start-button" class="secondary-button hidden">Force Start</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ADMIN -->
+    <section id="admin-screen" class="screen hidden">
+      <div class="panel wide-panel">
+        <h2>Admin Panel</h2>
+        <button id="admin-back-button" class="small-button">Back</button>
+
+        <div class="admin-grid">
+          <div class="admin-section">
+            <h3>Player Management</h3>
+
+            <div class="form-group">
+              <label>Username</label>
+              <input id="admin-player-username" type="text" autocomplete="off" />
+            </div>
+
+            <button id="admin-load-player-button" class="secondary-button">Load Player</button>
+
+            <div id="admin-player-info" class="panel-sub"></div>
+
+            <div class="form-group">
+              <label>Display Name</label>
+              <input id="admin-display-name" type="text" />
+            </div>
+
+            <button id="admin-save-name-button" class="secondary-button">Save Display Name</button>
+
+            <div class="form-group">
+              <label>Cash Amount</label>
+              <input id="admin-cash-amount" type="number" />
+            </div>
+
+            <div class="form-group">
+              <label>Reason</label>
+              <input id="admin-cash-reason" type="text" />
+            </div>
+
+            <div class="controls">
+              <button id="admin-add-cash-button" class="secondary-button">Add Cash</button>
+              <button id="admin-deduct-cash-button" class="secondary-button">Deduct Cash</button>
+              <button id="admin-set-cash-button" class="secondary-button">Set Cash</button>
+            </div>
+          </div>
+
+          <div class="admin-section">
+            <h3>Current Room Settings</h3>
+
+            <div class="form-group">
+              <label>Minimum Bet</label>
+              <input id="admin-room-min-bet" type="number" />
+            </div>
+
+            <div class="form-group">
+              <label>Bot Level</label>
+              <select id="admin-room-bot-level">
+                <option value="easy">Easy</option>
+                <option value="normal">Normal</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Arrange Timer Seconds</label>
+              <input id="admin-room-arrange-timer" type="number" />
+            </div>
+
+            <div class="form-group">
+              <label>Ready Timer Seconds</label>
+              <input id="admin-room-ready-timer" type="number" />
+            </div>
+
+            <div class="form-group">
+              <label>
+                <input id="admin-room-auto-fill-bots" type="checkbox" />
+                Auto-fill bots
+              </label>
+            </div>
+
+            <div class="form-group">
+              <label>
+                <input id="admin-room-scoop-bonus" type="checkbox" />
+                Scoop bonus +3
+              </label>
+            </div>
+
+            <div class="controls">
+              <button id="admin-save-room-button" class="secondary-button">Save Room Settings</button>
+              <button id="admin-fill-bots-button" class="secondary-button">Fill Bots</button>
+              <button id="admin-force-start-button" class="secondary-button">Force Start / Next Round</button>
+            </div>
+          </div>
+        </div>
+
+        <p id="admin-message" class="message"></p>
       </div>
     </section>
 
