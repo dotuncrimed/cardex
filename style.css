@@ -399,3 +399,76 @@ th {
   border-radius: 12px;
   padding: 14px;
 }
+
+/* =========================
+   RESULT CARD COMBINATIONS
+========================= */
+
+.result-cards-block summary {
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.result-hand-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+
+.result-hand-label {
+  min-width: 70px;
+  font-weight: bold;
+}
+
+.result-card-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.result-card {
+  width: 44px;
+  height: 64px;
+  padding: 4px;
+  cursor: default;
+}
+
+.result-card:hover {
+  transform: none;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+}
+
+.result-card .rank {
+  font-size: 13px;
+}
+
+.result-card .suit {
+  font-size: 16px;
+}
+
+.result-matchup-title {
+  margin-top: 12px;
+  font-weight: bold;
+}
+
+@media (max-width: 700px) {
+  .result-card {
+    width: 38px;
+    height: 56px;
+    padding: 3px;
+  }
+
+  .result-card .rank {
+    font-size: 11px;
+  }
+
+  .result-card .suit {
+    font-size: 14px;
+  }
+
+  .result-hand-label {
+    min-width: 55px;
+  }
+}
