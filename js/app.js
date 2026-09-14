@@ -369,8 +369,20 @@ function renderAssignedSection(sectionName, container) {
 
   const cards = sortCards(state.arrangement[sectionName]);
 
-  cards.forEach((card) => {
+  const total = cards.length;
+  const middleIndex = (total - 1) / 2;
+  const angleStep = total > 1 ? Math.min(4, 28 / total) : 0;
+
+  cards.forEach((card, index) => {
     const cardElement = makeCardElement(card, false);
+
+    const offset = index - middleIndex;
+    const angle = offset * angleStep;
+
+    cardElement.classList.add("zone-card");
+
+    cardElement.style.setProperty("--rot", `${angle.toFixed(2)}deg`);
+    cardElement.style.setProperty("--z", String(10 + index));
 
     cardElement.addEventListener("click", () => {
       state.arrangement[sectionName] = state.arrangement[sectionName].filter(
@@ -389,15 +401,39 @@ function renderHandCards() {
   const container = $("#hand-cards");
   container.innerHTML = "";
 
-  if (!state.handData || !state.handData.hand) return;
+  if (!state.handData || !state.handData.hand) {
+    return;
+  }
 
   const assigned = assignedCardsSet();
 
-  const hand = state.handData.hand.filter((card) => !assigned.has(card));
+  const cards = sortCards(
+    state.handData.hand.filter((card) => !assigned.has(card))
+  );
 
-  sortCards(hand).forEach((card) => {
+  const total = cards.length;
+  const middleIndex = (total - 1) / 2;
+  const angleStep = total > 1 ? Math.min(6, 68 / total) : 0;
+
+  cards.forEach((card, index) => {
     const selected = state.selectedCards.has(card);
+
     const cardElement = makeCardElement(card, selected);
+
+    const offset = index - middleIndex;
+    const angle = offset * angleStep;
+    const arc = Math.abs(offset) * Math.abs(offset) * 0.7;
+
+    cardElement.classList.add("hand-card");
+
+    cardElement.style.setProperty("--rot", `${angle.toFixed(2)}deg`);
+    cardElement.style.setProperty("--arc", `${arc.toFixed(2)}px`);
+
+    if (selected) {
+      cardElement.style.setProperty("--z", String(500 + index));
+    } else {
+      cardElement.style.setProperty("--z", String(10 + index));
+    }
 
     cardElement.addEventListener("click", () => {
       if (state.selectedCards.has(card)) {
