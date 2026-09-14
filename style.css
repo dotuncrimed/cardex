@@ -123,10 +123,6 @@ button:disabled {
   gap: 8px;
 }
 
-/* =========================
-   BASE CARD
-========================= */
-
 .card-row {
   min-height: 96px;
   display: flex;
@@ -170,10 +166,6 @@ button:disabled {
 .card .suit {
   font-size: 24px;
 }
-
-/* =========================
-   RESULT CARD COMBINATIONS
-========================= */
 
 .result-cards-block summary {
   font-weight: bold;
@@ -228,10 +220,6 @@ button:disabled {
 .loss { color: #ff9c9c; }
 .tie { color: #ffffff; }
 
-/* =========================
-   READY STATUS UI
-========================= */
-
 .ready-status-row {
   display: flex;
   align-items: center;
@@ -272,10 +260,6 @@ button:disabled {
 .player-row.ready .ready-text { color: #7cffb2; }
 .player-row.not-ready .ready-text { color: #ff9c9c; }
 
-/* =========================
-   ADMIN GRID
-========================= */
-
 .admin-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -294,10 +278,6 @@ button:disabled {
   border-radius: 12px;
   padding: 14px;
 }
-
-/* =========================
-   PUSOY-GO STYLE THEME
-========================= */
 
 .pg-table {
   max-width: 520px;
@@ -554,7 +534,6 @@ button:disabled {
   margin-bottom: 8px;
 }
 
-/* Hide legacy elements we no longer show */
 #result-table,
 #result-details,
 #assign-front-button,
@@ -562,10 +541,6 @@ button:disabled {
 #assign-back-button {
   display: none !important;
 }
-
-/* =========================
-   RESPONSIVE
-========================= */
 
 @media (max-width: 700px) {
   .result-card {
