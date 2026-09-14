@@ -633,11 +633,11 @@ export async function finishRound(roomId, user) {
       );
     }
 
-    await updateUserStats(
-      ranking.username,
-      ranking.points,
-      ranking.humanRank === 1
-    );
+await updateUserStats(
+  ranking.username,
+  ranking.points,
+  ranking.prize > 0
+);
   }
 
   const readyTimerSeconds = Number(room.settings.readyTimerSeconds) || 0;
