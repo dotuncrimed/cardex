@@ -141,23 +141,35 @@ button:disabled {
   color: #ffd0d0;
 }
 
+/* =========================
+   CARD ROWS
+========================= */
+
 .card-row {
   min-height: 96px;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 0;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0;
+  padding: 16px 8px;
+  overflow: visible;
 }
 
 .hand-area .card-row {
-  justify-content: center;
-  min-height: 130px;
+  min-height: 180px;
+  padding: 42px 12px 26px;
 }
 
+/* =========================
+   BASE CARD
+========================= */
+
 .card {
+  position: relative;
   width: 68px;
   height: 98px;
+  flex: 0 0 auto;
   border-radius: 10px;
   background: white;
   color: #111;
@@ -168,11 +180,117 @@ button:disabled {
   padding: 6px;
   cursor: pointer;
   user-select: none;
-  transition: transform 0.15s ease;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+  transform-origin: bottom center;
+  z-index: var(--z, 1);
 }
 
+.card.red {
+  color: #c62828;
+}
+
+.card .rank {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.card .suit {
+  font-size: 24px;
+}
+
+/* =========================
+   HAND FAN
+========================= */
+
 .hand-area .card {
-  margin-left: -34px;
+  margin-left: -38px;
+  transform: translateY(var(--arc, 0px)) rotate(var(--rot, 0deg));
+}
+
+.hand-area .card:first-child {
+  margin-left: 0;
+}
+
+.hand-area .card:hover {
+  transform:
+    translateY(calc(var(--arc, 0px) - 22px))
+    rotate(var(--rot, 0deg))
+    scale(1.06);
+
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.38);
+}
+
+.hand-area .card.selected {
+  outline: 3px solid #ffd54f;
+  transform:
+    translateY(calc(var(--arc, 0px) - 42px))
+    rotate(var(--rot, 0deg))
+    scale(1.14);
+
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.45);
+}
+
+/* =========================
+   FRONT / MIDDLE / BACK ZONES
+========================= */
+
+.arrange-block .card-row {
+  min-height: 118px;
+  padding: 22px 6px 12px;
+}
+
+.arrange-block .card {
+  width: 58px;
+  height: 84px;
+  margin-left: -24px;
+  transform: rotate(var(--rot, 0deg));
+}
+
+.arrange-block .card:first-child {
+  margin-left: 0;
+}
+
+.arrange-block .card:hover {
+  transform:
+    translateY(-12px)
+    rotate(var(--rot, 0deg))
+    scale(1.05);
+}
+
+/* =========================
+   MOBILE SPACING
+========================= */
+
+@media (max-width: 700px) {
+  .hand-area .card-row {
+    min-height: 158px;
+    padding: 36px 8px 22px;
+  }
+
+  .hand-area .card {
+    width: 54px;
+    height: 78px;
+    margin-left: -30px;
+  }
+
+  .arrange-block .card {
+    width: 46px;
+    height: 66px;
+    margin-left: -18px;
+  }
+
+  .card .rank {
+    font-size: 15px;
+  }
+
+  .card .suit {
+    font-size: 19px;
+  }
+
+  .hand-area .card:first-child,
+  .arrange-block .card:first-child {
+    margin-left: 0;
+  }
 }
 
 .hand-area .card:first-child {
@@ -184,11 +302,6 @@ button:disabled {
   z-index: 20;
 }
 
-.card.selected {
-  outline: 3px solid #ffd54f;
-  transform: translateY(-22px);
-  z-index: 30;
-}
 
 .card.red {
   color: #c62828;
@@ -215,13 +328,6 @@ button:disabled {
   }
 }
 
-.arrange-block,
-.hand-area {
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  padding: 12px;
-}
 
 .table-wrap {
   overflow: auto;
