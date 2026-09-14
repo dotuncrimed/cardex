@@ -140,11 +140,14 @@ export function calculateResults(room, handsMap) {
   });
 
   /*
-    IMPORTANT CHANGE:
-    Prize is now based on overall rank, not human-only rank.
+    Prize logic:
 
-    If the top overall player is a bot, humans get no prize.
-    If one or more humans tie for top overall score, they split the prize.
+    Prize is based on OVERALL rank, not human-only rank.
+
+    If one or more humans are tied for the top overall score,
+    they split the prize.
+
+    If a bot alone is the top overall player, humans get no prize.
   */
 
   if (pot > 0 && rankings.length > 0) {
@@ -183,12 +186,24 @@ export function calculateResults(room, handsMap) {
     }
   });
 
+  const arrangements = {};
+
+  players.forEach((player) => {
+    const handData = handsMap[player.uid];
+
+    arrangements[player.uid] =
+      handData && handData.arrangement
+        ? handData.arrangement
+        : null;
+  });
+
   return {
     roundNumber: room.roundNumber,
     pot,
     minBet,
     rankings,
     details,
+    arrangements,
     calculatedAt: Date.now()
   };
 }
