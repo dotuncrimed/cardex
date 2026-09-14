@@ -32,11 +32,7 @@ function fullSearch(sortedHand) {
     for (const middle of choose(afterBack, 5)) {
       const front = afterBack.filter((card) => !middle.includes(card));
 
-      const arrangement = {
-        front,
-        middle,
-        back
-      };
+      const arrangement = { front, middle, back };
 
       if (!isLegalArrangement(arrangement)) {
         continue;
@@ -74,7 +70,6 @@ export function botArrangeHand(hand, difficulty = "normal") {
   };
 
   const backLimit = limits[difficulty] || limits.normal;
-
   const backCandidates = [];
 
   for (const back of choose(sortedHand, 5)) {
