@@ -1,13 +1,5 @@
 import { compareArrangements } from "./evaluator.js";
 
-function getPayoutPercentages(humanCount) {
-  if (humanCount === 1) return [1];
-  if (humanCount === 2) return [0.7, 0.3];
-  if (humanCount === 3) return [0.6, 0.3, 0.1];
-  if (humanCount === 4) return [0.5, 0.3, 0.2, 0];
-  return [];
-}
-
 export function calculateResults(room, handsMap) {
   const players = room.players;
 
@@ -110,7 +102,8 @@ export function calculateResults(room, handsMap) {
       bet: 0,
       prize: 0,
       net: 0,
-      humanRank: null
+      humanRank: null,
+      overallRank: null
     };
   });
 
@@ -122,6 +115,10 @@ export function calculateResults(room, handsMap) {
     );
   });
 
+  rankings.forEach((ranking, index) => {
+    ranking.overallRank = index + 1;
+  });
+
   let humanRank = 0;
 
   rankings.forEach((ranking) => {
@@ -131,36 +128,65 @@ export function calculateResults(room, handsMap) {
     }
   });
 
-  const humanRankings = rankings.filter((ranking) => !ranking.isBot);
-  const percentages = getPayoutPercentages(humanRankings.length);
-
-  humanRankings.forEach((ranking, index) => {
-    const percent = percentages[index] || 0;
-    ranking.prize = Math.floor((room.pot || 0) * percent);
-  });
-
-  const paid = humanRankings.reduce((sum, ranking) => sum + ranking.prize, 0);
-  const remainder = (room.pot || 0) - paid;
-
-  if (remainder > 0 && humanRankings.length > 0) {
-    humanRankings[0].prize += remainder;
-  }
+  const minBet = Number(room.settings.minBet) || 0;
+  const pot = Number(room.pot) || 0;
 
   rankings.forEach((ranking) => {
     if (ranking.isBot) {
       ranking.bet = 0;
-      ranking.prize = 0;
-      ranking.net = 0;
     } else {
-      ranking.bet = Number(room.settings.minBet) || 0;
+      ranking.bet = minBet;
+    }
+  });
+
+  /*
+    IMPORTANT CHANGE:
+    Prize is now based on overall rank, not human-only rank.
+
+    If the top overall player is a bot, humans get no prize.
+    If one or more humans tie for top overall score, they split the prize.
+  */
+
+  if (pot > 0 && rankings.length > 0) {
+    const topPoints = rankings[0].points;
+    const topRowWins = rankings[0].rowWins;
+
+    const topHumans = rankings.filter((ranking) => {
+      return (
+        !ranking.isBot &&
+        ranking.points === topPoints &&
+        ranking.rowWins === topRowWins
+      );
+    });
+
+    if (topHumans.length > 0) {
+      const share = Math.floor(pot / topHumans.length);
+
+      let paid = 0;
+
+      topHumans.forEach((ranking, index) => {
+        if (index === topHumans.length - 1) {
+          ranking.prize = pot - paid;
+        } else {
+          ranking.prize = share;
+          paid += share;
+        }
+      });
+    }
+  }
+
+  rankings.forEach((ranking) => {
+    if (!ranking.isBot) {
       ranking.net = ranking.prize - ranking.bet;
+    } else {
+      ranking.net = 0;
     }
   });
 
   return {
     roundNumber: room.roundNumber,
-    pot: room.pot || 0,
-    minBet: Number(room.settings.minBet) || 0,
+    pot,
+    minBet,
     rankings,
     details,
     calculatedAt: Date.now()
