@@ -10,13 +10,8 @@ import {
   sortCards
 } from "./cards.js";
 
-import {
-  isLegalArrangement
-} from "./evaluator.js";
-
-import {
-  botArrangeHand
-} from "./bot.js";
+import { isLegalArrangement } from "./evaluator.js";
+import { botArrangeHand } from "./bot.js";
 
 import {
   createRoom,
@@ -52,6 +47,7 @@ const state = {
     back: []
   },
   selectedCards: new Set(),
+  targetRow: "front",
   roundInitialized: null,
   unsubRoom: null,
   unsubHand: null,
@@ -90,11 +86,7 @@ function setAdminMessage(message) {
 }
 
 function emptyArrangement() {
-  return {
-    front: [],
-    middle: [],
-    back: []
-  };
+  return { front: [], middle: [], back: [] };
 }
 
 function assignedCardsSet() {
@@ -107,19 +99,16 @@ function assignedCardsSet() {
 
 function currentUserInRoomPlayers() {
   if (!state.room || !state.user) return false;
-
   return state.room.players.some((player) => player.uid === state.user.uid);
 }
 
 function currentUserInRoomSpectators() {
   if (!state.room || !state.user) return false;
-
   return state.room.spectators.some((spectator) => spectator.uid === state.user.uid);
 }
 
 function currentUserPlayerObject() {
   if (!state.room || !state.user) return null;
-
   return state.room.players.find((player) => player.uid === state.user.uid) || null;
 }
 
@@ -200,12 +189,82 @@ function makeCardElement(card, selected = false) {
   return el;
 }
 
+/* =========================
+   SEATS
+========================= */
+
+function renderSeats() {
+  const container = $("#pg-seats");
+  if (!container || !state.room) return;
+
+  container.innerHTML = "";
+
+  const players = [...state.room.players].sort((a, b) => a.seat - b.seat);
+
+  players.forEach((player) => {
+    const isSelf = state.user && player.uid === state.user.uid;
+
+    const seat = document.createElement("div");
+    seat.className =
+      "pg-seat" +
+      (isSelf ? " self" : "") +
+      (player.isBot ? " bot" : "");
+
+    const initial = (player.displayName || "?").charAt(0).toUpperCase();
+
+    let status = "";
+
+    if (state.room.status === "arranging" || state.room.status === "scoring") {
+      status = player.submitted ? "✓" : "…";
+    } else if (state.room.status === "round_end") {
+      status = player.ready ? "✓" : "…";
+    }
+
+    seat.innerHTML = `
+      <div class="pg-avatar">${initial}</div>
+      <div class="pg-seat-name">${player.displayName}${isSelf ? " (You)" : ""}</div>
+      <div class="pg-seat-status">${status}</div>
+    `;
+
+    container.appendChild(seat);
+  });
+}
+
+/* =========================
+   ROW SELECTION + PLACEMENT
+========================= */
+
+function selectRow(row) {
+  state.targetRow = row;
+
+  document.querySelectorAll(".pg-row-tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.row === row);
+  });
+}
+
+function placeCardToRow(card) {
+  const row = state.targetRow;
+  const capacity = row === "front" ? 3 : 5;
+
+  if (state.arrangement[row].length >= capacity) {
+    setRoomMessage(row === "front" ? "Front is full (3 cards)." : "That row is full (5 cards).");
+    return;
+  }
+
+  state.arrangement[row].push(card);
+  renderArrangeSection();
+}
+
+/* =========================
+   LOBBY
+========================= */
+
 function renderPlayerList() {
   const playerList = $("#player-list");
-  playerList.innerHTML = "";
+  const spectatorList = $("#spectator-list");
 
-  const spectators = $("#spectator-list");
-  spectators.innerHTML = "";
+  playerList.innerHTML = "";
+  spectatorList.innerHTML = "";
 
   if (!state.room) return;
 
@@ -213,7 +272,6 @@ function renderPlayerList() {
 
   players.forEach((player) => {
     const div = document.createElement("div");
-
     div.className = "player-row";
 
     if (state.room.status === "round_end") {
@@ -224,16 +282,12 @@ function renderPlayerList() {
     const botText = player.isBot ? " [Bot]" : "";
     const readyText =
       state.room.status === "round_end"
-        ? player.ready
-          ? " Ready"
-          : " Not Ready"
+        ? player.ready ? " Ready" : " Not Ready"
         : "";
 
     const submittedText =
       state.room.status === "arranging"
-        ? player.submitted
-          ? " Submitted"
-          : " Arranging"
+        ? player.submitted ? " Submitted" : " Arranging"
         : "";
 
     div.textContent =
@@ -251,9 +305,13 @@ function renderPlayerList() {
     const div = document.createElement("div");
     div.className = "player-row";
     div.textContent = spectator.displayName;
-    spectators.appendChild(div);
+    spectatorList.appendChild(div);
   });
 }
+
+/* =========================
+   ROOM INFO
+========================= */
 
 function renderRoomInfo() {
   if (!state.room) return;
@@ -272,12 +330,21 @@ function renderRoomInfo() {
       0,
       Math.ceil((state.room.phaseEndsAt - Date.now()) / 1000)
     );
-
     timerElement.textContent = `${secondsLeft}s`;
   } else {
     timerElement.textContent = "Off";
   }
+
+  const roundEl = $("#pg-round");
+  if (roundEl) roundEl.textContent = "Round " + (state.room.roundNumber || 0);
+
+  const potEl = $("#pg-pot");
+  if (potEl) potEl.textContent = "Pot " + (state.room.pot || 0);
 }
+
+/* =========================
+   ROOM LAYOUT SWITCHING
+========================= */
 
 function renderLobbySection() {
   const lobbySection = $("#lobby-section");
@@ -327,6 +394,10 @@ function renderLobbySection() {
   renderPlayerList();
 }
 
+/* =========================
+   ARRANGE SECTION
+========================= */
+
 function renderArrangeSection() {
   const arrangeStatus = $("#arrange-status");
 
@@ -343,12 +414,10 @@ function renderArrangeSection() {
     return;
   }
 
-  // --- AUTO ARRANGE LOGIC ---
   if (state.room.settings.autoArrange) {
     arrangeStatus.textContent = "Auto-arranging your cards...";
     disableArrangeControls(true);
-    
-    // Small timeout so the UI can render the message first
+
     setTimeout(async () => {
       const arrangement = botArrangeHand(state.handData.hand, "hard");
       try {
@@ -359,10 +428,9 @@ function renderArrangeSection() {
         setRoomMessage("Auto-arrange failed.");
       }
     }, 600);
-    
+
     return;
   }
-  // --------------------------
 
   arrangeStatus.textContent = "Arrange your cards.";
   disableArrangeControls(false);
@@ -390,20 +458,8 @@ function renderAssignedSection(sectionName, container) {
 
   const cards = sortCards(state.arrangement[sectionName]);
 
-  const total = cards.length;
-  const middleIndex = (total - 1) / 2;
-  const angleStep = total > 1 ? Math.min(4, 28 / total) : 0;
-
-  cards.forEach((card, index) => {
+  cards.forEach((card) => {
     const cardElement = makeCardElement(card, false);
-
-    const offset = index - middleIndex;
-    const angle = offset * angleStep;
-
-    cardElement.classList.add("zone-card");
-
-    cardElement.style.setProperty("--rot", `${angle.toFixed(2)}deg`);
-    cardElement.style.setProperty("--z", String(10 + index));
 
     cardElement.addEventListener("click", () => {
       state.arrangement[sectionName] = state.arrangement[sectionName].filter(
@@ -422,9 +478,7 @@ function renderHandCards() {
   const container = $("#hand-cards");
   container.innerHTML = "";
 
-  if (!state.handData || !state.handData.hand) {
-    return;
-  }
+  if (!state.handData || !state.handData.hand) return;
 
   const assigned = assignedCardsSet();
 
@@ -437,9 +491,7 @@ function renderHandCards() {
   const angleStep = total > 1 ? Math.min(6, 68 / total) : 0;
 
   cards.forEach((card, index) => {
-    const selected = state.selectedCards.has(card);
-
-    const cardElement = makeCardElement(card, selected);
+    const cardElement = makeCardElement(card, false);
 
     const offset = index - middleIndex;
     const angle = offset * angleStep;
@@ -449,51 +501,19 @@ function renderHandCards() {
 
     cardElement.style.setProperty("--rot", `${angle.toFixed(2)}deg`);
     cardElement.style.setProperty("--arc", `${arc.toFixed(2)}px`);
-
-    if (selected) {
-      cardElement.style.setProperty("--z", String(500 + index));
-    } else {
-      cardElement.style.setProperty("--z", String(10 + index));
-    }
+    cardElement.style.setProperty("--z", String(10 + index));
 
     cardElement.addEventListener("click", () => {
-      if (state.selectedCards.has(card)) {
-        state.selectedCards.delete(card);
-      } else {
-        state.selectedCards.add(card);
-      }
-
-      renderHandCards();
+      placeCardToRow(card);
     });
 
     container.appendChild(cardElement);
   });
 }
 
-function assignSelected(sectionName) {
-  const selected = [...state.selectedCards];
-
-  if (selected.length === 0) {
-    setRoomMessage("Select cards first.");
-    return;
-  }
-
-  const capacity = sectionName === "front" ? 3 : 5;
-  const current = state.arrangement[sectionName];
-
-  if (current.length + selected.length > capacity) {
-    setRoomMessage(`${sectionName} can only hold ${capacity} cards.`);
-    return;
-  }
-
-  state.arrangement[sectionName] = [
-    ...current,
-    ...selected
-  ];
-
-  state.selectedCards.clear();
-  renderArrangeSection();
-}
+/* =========================
+   SUBMIT + AUTO-SUBMIT
+========================= */
 
 async function submitHumanArrangement() {
   const arrangement = state.arrangement;
@@ -523,17 +543,11 @@ async function submitHumanArrangement() {
 
 async function autoSubmitIfNeeded() {
   if (state.autoSubmitting) return;
-
   if (!state.room || !state.user || !state.handData) return;
-
   if (state.room.status !== "arranging") return;
-
   if (!currentUserInRoomPlayers()) return;
-
   if (state.handData.submitted) return;
-
   if (!state.room.phaseEndsAt) return;
-
   if (Date.now() < state.room.phaseEndsAt) return;
 
   state.autoSubmitting = true;
@@ -557,6 +571,80 @@ async function autoSubmitIfNeeded() {
   } finally {
     state.autoSubmitting = false;
   }
+}
+
+/* =========================
+   RESULTS
+========================= */
+
+function createCombinationBlock(label, cards) {
+  const row = document.createElement("div");
+  row.className = "result-hand-row";
+
+  const labelEl = document.createElement("div");
+  labelEl.className = "result-hand-label";
+  labelEl.textContent = label;
+
+  const cardsEl = document.createElement("div");
+  cardsEl.className = "result-card-row";
+
+  if (!cards || cards.length === 0) {
+    const empty = document.createElement("div");
+    empty.textContent = "-";
+    cardsEl.appendChild(empty);
+  } else {
+    sortCards(cards).forEach((card) => {
+      const cardEl = makeCardElement(card, false);
+      cardEl.classList.add("result-card");
+      cardsEl.appendChild(cardEl);
+    });
+  }
+
+  row.appendChild(labelEl);
+  row.appendChild(cardsEl);
+
+  return row;
+}
+
+function renderResultBoards(results) {
+  const boards = $("#result-boards");
+  if (!boards) return;
+
+  boards.innerHTML = "";
+
+  results.rankings.forEach((ranking, index) => {
+    const board = document.createElement("div");
+    board.className = "pg-board" + (index === 0 ? " winner" : "");
+
+    const head = document.createElement("div");
+    head.className = "pg-board-head";
+    head.textContent =
+      `${index + 1}. ${ranking.displayName}` +
+      `${ranking.isBot ? " (Bot)" : ""} — ${ranking.points} wins`;
+
+    board.appendChild(head);
+
+    const arrangement = results.arrangements
+      ? results.arrangements[ranking.uid]
+      : null;
+
+    if (arrangement) {
+      board.appendChild(createCombinationBlock("Front", arrangement.front));
+      board.appendChild(createCombinationBlock("Middle", arrangement.middle));
+      board.appendChild(createCombinationBlock("Back", arrangement.back));
+    }
+
+    if (!ranking.isBot) {
+      const net = document.createElement("div");
+      net.className = "pg-board-net";
+      net.textContent =
+        `Bet ${ranking.bet} • Prize ${ranking.prize} • ` +
+        `Net ${ranking.net >= 0 ? "+" : ""}${ranking.net}`;
+      board.appendChild(net);
+    }
+
+    boards.appendChild(board);
+  });
 }
 
 function renderResultsSection() {
@@ -613,9 +701,7 @@ function renderResultsSection() {
   results.rankings.forEach((ranking, index) => {
     const wrapper = document.createElement("details");
     wrapper.className = "details-block result-cards-block";
-
-    // Set to true if you want all combinations open automatically
-    wrapper.open = true;
+    wrapper.open = false;
 
     const summary = document.createElement("summary");
 
@@ -630,107 +716,49 @@ function renderResultsSection() {
 
     wrapper.appendChild(summary);
 
-    const arrangement = results.arrangements
-      ? results.arrangements[ranking.uid]
-      : null;
-
-    if (arrangement) {
-      wrapper.appendChild(
-        createCombinationBlock("Front", arrangement.front)
-      );
-
-      wrapper.appendChild(
-        createCombinationBlock("Middle", arrangement.middle)
-      );
-
-      wrapper.appendChild(
-        createCombinationBlock("Back", arrangement.back)
-      );
-    } else {
-      const missing = document.createElement("div");
-      missing.textContent = "No arrangement available.";
-      wrapper.appendChild(missing);
-    }
-
     const details = results.details[ranking.uid] || [];
 
-    if (details.length > 0) {
-      const matchupTitle = document.createElement("div");
-      matchupTitle.className = "result-matchup-title";
-      matchupTitle.textContent = "Matchups";
-      wrapper.appendChild(matchupTitle);
+    details.forEach((detail) => {
+      const row = document.createElement("div");
 
-      details.forEach((detail) => {
-        const row = document.createElement("div");
+      const icon = (value) => {
+        if (value > 0) return "W";
+        if (value < 0) return "L";
+        return "T";
+      };
 
-        const icon = (value) => {
-          if (value > 0) return "W";
-          if (value < 0) return "L";
-          return "T";
-        };
+      const colorClass = (value) => {
+        if (value > 0) return "win";
+        if (value < 0) return "loss";
+        return "tie";
+      };
 
-        const colorClass = (value) => {
-          if (value > 0) return "win";
-          if (value < 0) return "loss";
-          return "tie";
-        };
+      let matchText = "Tied";
 
-        let matchText = "Tied";
+      if (detail.matchResult === "win") matchText = "Won";
+      if (detail.matchResult === "lose") matchText = "Lost";
 
-        if (detail.matchResult === "win") {
-          matchText = "Won";
-        }
+      row.innerHTML = `
+        vs ${detail.opponentName}:
+        Front <span class="${colorClass(detail.rows.front)}">${icon(detail.rows.front)}</span>
+        Middle <span class="${colorClass(detail.rows.middle)}">${icon(detail.rows.middle)}</span>
+        Back <span class="${colorClass(detail.rows.back)}">${icon(detail.rows.back)}</span>
+        — ${matchText}
+      `;
 
-        if (detail.matchResult === "lose") {
-          matchText = "Lost";
-        }
-
-        row.innerHTML = `
-          vs ${detail.opponentName}:
-          Front <span class="${colorClass(detail.rows.front)}">${icon(detail.rows.front)}</span>
-          Middle <span class="${colorClass(detail.rows.middle)}">${icon(detail.rows.middle)}</span>
-          Back <span class="${colorClass(detail.rows.back)}">${icon(detail.rows.back)}</span>
-          — ${matchText}
-        `;
-
-        wrapper.appendChild(row);
-      });
-    }
+      wrapper.appendChild(row);
+    });
 
     resultDetails.appendChild(wrapper);
   });
 
+  renderResultBoards(results);
   renderReadyArea();
 }
 
-function createCombinationBlock(label, cards) {
-  const row = document.createElement("div");
-  row.className = "result-hand-row";
-
-  const labelEl = document.createElement("div");
-  labelEl.className = "result-hand-label";
-  labelEl.textContent = label;
-
-  const cardsEl = document.createElement("div");
-  cardsEl.className = "result-card-row";
-
-  if (!cards || cards.length === 0) {
-    const empty = document.createElement("div");
-    empty.textContent = "-";
-    cardsEl.appendChild(empty);
-  } else {
-    sortCards(cards).forEach((card) => {
-      const cardEl = makeCardElement(card, false);
-      cardEl.classList.add("result-card");
-      cardsEl.appendChild(cardEl);
-    });
-  }
-
-  row.appendChild(labelEl);
-  row.appendChild(cardsEl);
-
-  return row;
-}
+/* =========================
+   READY AREA
+========================= */
 
 function renderReadyArea() {
   const readyList = $("#ready-list");
@@ -751,17 +779,17 @@ function renderReadyArea() {
   players.forEach((player) => {
     const div = document.createElement("div");
     div.className = `player-row ready-status-row ${player.ready ? "ready" : "not-ready"}`;
-    
+
     const icon = player.ready ? "✅" : "❌";
     const statusText = player.ready ? "Ready" : "Waiting...";
     const youText = (state.user && player.uid === state.user.uid) ? " (You)" : "";
-    
+
     div.innerHTML = `
-      <span class="ready-icon">${icon}</span> 
-      <span class="player-name">${player.displayName}${youText}</span> 
+      <span class="ready-icon">${icon}</span>
+      <span class="player-name">${player.displayName}${youText}</span>
       <span class="ready-text">${statusText}</span>
     `;
-    
+
     readyList.appendChild(div);
   });
 
@@ -777,9 +805,12 @@ function renderReadyArea() {
   readyButton.classList.toggle("hidden", !showReadyButton);
 
   const showForceStart = isHost();
-
   forceStartButton.classList.toggle("hidden", !showForceStart);
 }
+
+/* =========================
+   ROOM RENDER + HAND LISTENER
+========================= */
 
 function renderRoom() {
   if (!state.room) return;
@@ -791,6 +822,8 @@ function renderRoom() {
   }
 
   renderRoomInfo();
+  renderSeats();
+  selectRow(state.targetRow || "front");
   renderLobbySection();
   manageHandListener();
 }
@@ -819,11 +852,13 @@ function manageHandListener() {
   }
 }
 
+/* =========================
+   HOST CONTROLLER
+========================= */
+
 async function hostController() {
   if (!state.room || !state.user) return;
-
   if (state.room.hostId !== state.user.uid) return;
-
   if (state.hostBusy) return;
 
   const room = state.room;
@@ -885,6 +920,10 @@ async function hostController() {
   }
 }
 
+/* =========================
+   ADMIN
+========================= */
+
 async function loadAdminRoomSettings() {
   if (!state.room) {
     setAdminMessage("You are not in a room.");
@@ -916,6 +955,10 @@ function showAdminScreen() {
   showScreen("admin");
 }
 
+/* =========================
+   AUTH
+========================= */
+
 watchAuth((user) => {
   state.user = user;
 
@@ -945,13 +988,31 @@ watchAuth((user) => {
   }
 });
 
+/* =========================
+   GLOBAL TICK
+========================= */
+
 setInterval(() => {
   if (!state.room) return;
 
   renderRoomInfo();
+
+  const timerEl = $("#pg-timer");
+
+  if (timerEl && state.room.phaseEndsAt) {
+    const seconds = Math.max(0, Math.ceil((state.room.phaseEndsAt - Date.now()) / 1000));
+    timerEl.textContent = seconds;
+  } else if (timerEl) {
+    timerEl.textContent = "--";
+  }
+
   autoSubmitIfNeeded();
   hostController();
 }, 700);
+
+/* =========================
+   EVENT LISTENERS
+========================= */
 
 $("#login-button").addEventListener("click", async () => {
   const username = $("#login-username").value;
@@ -1004,7 +1065,7 @@ $("#create-room-button").addEventListener("click", async () => {
     botLevel: $("#create-bot-level").value,
     autoFillBots: $("#create-auto-fill-bots").checked,
     scoopBonus: $("#create-scoop-bonus").checked,
-    autoArrange: $("#create-auto-arrange").checked // NEW SETTING
+    autoArrange: $("#create-auto-arrange").checked
   };
 
   try {
@@ -1085,18 +1146,6 @@ $("#take-seat-button").addEventListener("click", async () => {
   }
 });
 
-$("#assign-front-button").addEventListener("click", () => {
-  assignSelected("front");
-});
-
-$("#assign-middle-button").addEventListener("click", () => {
-  assignSelected("middle");
-});
-
-$("#assign-back-button").addEventListener("click", () => {
-  assignSelected("back");
-});
-
 $("#auto-arrange-button").addEventListener("click", () => {
   if (!state.handData || !state.handData.hand) return;
 
@@ -1133,7 +1182,6 @@ $("#force-start-button").addEventListener("click", async () => {
 });
 
 $("#admin-button").addEventListener("click", showAdminScreen);
-
 $("#room-admin-button").addEventListener("click", showAdminScreen);
 
 $("#admin-back-button").addEventListener("click", () => {
@@ -1300,5 +1348,16 @@ $("#admin-force-start-button").addEventListener("click", async () => {
     setAdminMessage("Round started.");
   } catch (error) {
     setAdminMessage(error.message || "Failed to force start.");
+  }
+});
+
+/* =========================
+   GLOBAL: ROW TAB SELECTION
+========================= */
+
+document.addEventListener("click", (event) => {
+  const tab = event.target.closest(".pg-row-tab");
+  if (tab) {
+    selectRow(tab.dataset.row);
   }
 });
