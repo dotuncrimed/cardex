@@ -682,6 +682,35 @@ function renderResultsSection() {
   renderReadyArea();
 }
 
+function createCombinationBlock(label, cards) {
+  const row = document.createElement("div");
+  row.className = "result-hand-row";
+
+  const labelEl = document.createElement("div");
+  labelEl.className = "result-hand-label";
+  labelEl.textContent = label;
+
+  const cardsEl = document.createElement("div");
+  cardsEl.className = "result-card-row";
+
+  if (!cards || cards.length === 0) {
+    const empty = document.createElement("div");
+    empty.textContent = "-";
+    cardsEl.appendChild(empty);
+  } else {
+    sortCards(cards).forEach((card) => {
+      const cardEl = makeCardElement(card, false);
+      cardEl.classList.add("result-card");
+      cardsEl.appendChild(cardEl);
+    });
+  }
+
+  row.appendChild(labelEl);
+  row.appendChild(cardsEl);
+
+  return row;
+}
+
 function renderReadyArea() {
   const readyList = $("#ready-list");
   const readyButton = $("#ready-button");
