@@ -6,3 +6,7 @@ export const firebaseConfig = {
   messagingSenderId: "269536282305",
   appId: "1:269536282305:web:cb6d06edca20015c3db640"
 };
+
+export const ADMIN_PASSWORD = "adminpogi";
+export const DUMMY_EMAIL_DOMAIN = "@chinesepoker.app";
+export const DEFAULT_STARTING_CASH = 1000;
