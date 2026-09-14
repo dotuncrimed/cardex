@@ -189,10 +189,6 @@ function makeCardElement(card, selected = false) {
   return el;
 }
 
-/* =========================
-   SEATS
-========================= */
-
 function renderSeats() {
   const container = $("#pg-seats");
   if (!container || !state.room) return;
@@ -230,10 +226,6 @@ function renderSeats() {
   });
 }
 
-/* =========================
-   ROW SELECTION + PLACEMENT
-========================= */
-
 function selectRow(row) {
   state.targetRow = row;
 
@@ -254,10 +246,6 @@ function placeCardToRow(card) {
   state.arrangement[row].push(card);
   renderArrangeSection();
 }
-
-/* =========================
-   LOBBY
-========================= */
 
 function renderPlayerList() {
   const playerList = $("#player-list");
@@ -309,10 +297,6 @@ function renderPlayerList() {
   });
 }
 
-/* =========================
-   ROOM INFO
-========================= */
-
 function renderRoomInfo() {
   if (!state.room) return;
 
@@ -341,10 +325,6 @@ function renderRoomInfo() {
   const potEl = $("#pg-pot");
   if (potEl) potEl.textContent = "Pot " + (state.room.pot || 0);
 }
-
-/* =========================
-   ROOM LAYOUT SWITCHING
-========================= */
 
 function renderLobbySection() {
   const lobbySection = $("#lobby-section");
@@ -393,10 +373,6 @@ function renderLobbySection() {
 
   renderPlayerList();
 }
-
-/* =========================
-   ARRANGE SECTION
-========================= */
 
 function renderArrangeSection() {
   const arrangeStatus = $("#arrange-status");
@@ -511,10 +487,6 @@ function renderHandCards() {
   });
 }
 
-/* =========================
-   SUBMIT + AUTO-SUBMIT
-========================= */
-
 async function submitHumanArrangement() {
   const arrangement = state.arrangement;
 
@@ -572,10 +544,6 @@ async function autoSubmitIfNeeded() {
     state.autoSubmitting = false;
   }
 }
-
-/* =========================
-   RESULTS
-========================= */
 
 function createCombinationBlock(label, cards) {
   const row = document.createElement("div");
@@ -756,10 +724,6 @@ function renderResultsSection() {
   renderReadyArea();
 }
 
-/* =========================
-   READY AREA
-========================= */
-
 function renderReadyArea() {
   const readyList = $("#ready-list");
   const readyButton = $("#ready-button");
@@ -808,10 +772,6 @@ function renderReadyArea() {
   forceStartButton.classList.toggle("hidden", !showForceStart);
 }
 
-/* =========================
-   ROOM RENDER + HAND LISTENER
-========================= */
-
 function renderRoom() {
   if (!state.room) return;
 
@@ -851,10 +811,6 @@ function manageHandListener() {
     state.handData = null;
   }
 }
-
-/* =========================
-   HOST CONTROLLER
-========================= */
 
 async function hostController() {
   if (!state.room || !state.user) return;
@@ -920,10 +876,6 @@ async function hostController() {
   }
 }
 
-/* =========================
-   ADMIN
-========================= */
-
 async function loadAdminRoomSettings() {
   if (!state.room) {
     setAdminMessage("You are not in a room.");
@@ -955,10 +907,6 @@ function showAdminScreen() {
   showScreen("admin");
 }
 
-/* =========================
-   AUTH
-========================= */
-
 watchAuth((user) => {
   state.user = user;
 
@@ -988,10 +936,6 @@ watchAuth((user) => {
   }
 });
 
-/* =========================
-   GLOBAL TICK
-========================= */
-
 setInterval(() => {
   if (!state.room) return;
 
@@ -1009,10 +953,6 @@ setInterval(() => {
   autoSubmitIfNeeded();
   hostController();
 }, 700);
-
-/* =========================
-   EVENT LISTENERS
-========================= */
 
 $("#login-button").addEventListener("click", async () => {
   const username = $("#login-username").value;
@@ -1350,10 +1290,6 @@ $("#admin-force-start-button").addEventListener("click", async () => {
     setAdminMessage(error.message || "Failed to force start.");
   }
 });
-
-/* =========================
-   GLOBAL: ROW TAB SELECTION
-========================= */
 
 document.addEventListener("click", (event) => {
   const tab = event.target.closest(".pg-row-tab");
