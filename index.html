@@ -205,6 +205,32 @@
           </div>
         </div>
 
+        <!-- REVEAL / COMPARE LAYER -->
+        <div id="reveal-layer" class="reveal-layer hidden">
+          <button id="reveal-skip" class="pg-btn hidden">Skip ▸▸</button>
+
+          <div class="reveal-slot reveal-top" id="reveal-top"></div>
+          <div class="reveal-slot reveal-left" id="reveal-left"></div>
+          <div class="reveal-slot reveal-right" id="reveal-right"></div>
+          <div class="reveal-slot reveal-bottom" id="reveal-bottom"></div>
+
+          <div class="score-panel" id="score-panel">
+            <div class="sp-row"><span>Front:</span><span id="sp-front"></span></div>
+            <div class="sp-row"><span>Mid:</span><span id="sp-mid"></span></div>
+            <div class="sp-row"><span>Back:</span><span id="sp-back"></span></div>
+            <div class="sp-row sp-total"><span>Total:</span><span id="sp-total"></span></div>
+          </div>
+
+          <div id="ready-area" class="ready-area hidden">
+            <div id="ready-list" class="pg-ready-list"></div>
+            <div class="pg-actions">
+              <button id="ready-button" class="ready-btn hidden">Ready for Next Round</button>
+              <button id="force-start-button" class="pg-btn hidden">Force Start</button>
+              <button id="view-results-button" class="pg-btn">View Full Results</button>
+            </div>
+          </div>
+        </div>
+
         <!-- RESULTS -->
         <div id="results-section" class="pg-panel hidden">
           <div id="result-summary" class="pg-result-summary"></div>
@@ -213,13 +239,6 @@
           <div class="hidden">
             <table id="result-table"></table>
             <div id="result-details"></div>
-          </div>
-
-          <div id="ready-list" class="pg-ready-list"></div>
-
-          <div class="pg-actions">
-            <button id="ready-button" class="ready-btn hidden">Ready for Next Round</button>
-            <button id="force-start-button" class="pg-btn hidden">Force Start</button>
           </div>
         </div>
 
