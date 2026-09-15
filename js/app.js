@@ -1356,6 +1356,10 @@ function manageHandListener() {
         if (total === 0) {
           autoPlaceFromHand();
         }
+
+        if (!state.room.settings.autoArrange) {
+          state.zoomOpen = true;
+        }
       }
 
       if (state.room && state.room.status === "arranging") {
@@ -1872,3 +1876,29 @@ document.addEventListener("click", (event) => {
     renderLobbySection();
   }
 });
+
+// Zoom arrange listeners
+const openZoomBtn = document.getElementById("open-zoom-button");
+if (openZoomBtn) {
+  openZoomBtn.addEventListener("click", () => {
+    state.zoomOpen = true;
+    renderArrangeSection();
+  });
+}
+
+const readyArrangeBtn = document.getElementById("ready-arrange-button");
+if (readyArrangeBtn) {
+  readyArrangeBtn.addEventListener("click", () => {
+    const a = state.arrangement;
+    if (a.front.length !== 3 || a.middle.length !== 5 || a.back.length !== 5) {
+      setRoomMessage("You need Front 3, Middle 5, Back 5.");
+      return;
+    }
+    if (!isLegalArrangement(a)) {
+      setRoomMessage("Illegal arrangement. Back must beat Middle, Middle must beat Front.");
+      return;
+    }
+    state.zoomOpen = false;
+    renderArrangeSection();
+  });
+}
