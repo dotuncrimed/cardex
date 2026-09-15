@@ -494,6 +494,25 @@ function onMyCardTap(row, index) {
   renderMyRows();
 }
 
+function autoPlaceFromHand() {
+  if (!state.handData || !state.handData.hand || state.handData.hand.length !== 13) {
+    return false;
+  }
+
+  const h = state.handData.hand;
+
+  state.arrangement = {
+    front: h.slice(0, 3),
+    middle: h.slice(3, 8),
+    back: h.slice(8, 13)
+  };
+
+  state.selectedCard = null;
+  state.selectedPos = null;
+
+  return true;
+}
+
 function renderMyRows() {
   ["front", "middle", "back"].forEach((row) => {
     const container = $("#row-" + row);
@@ -525,6 +544,7 @@ function renderMyRows() {
 
 function renderArrangeSection() {
   const arrangeStatus = $("#arrange-status");
+  if (!arrangeStatus) return;
 
   if (!state.handData) {
     arrangeStatus.textContent = "Waiting for cards...";
@@ -554,6 +574,15 @@ function renderArrangeSection() {
     }, 600);
 
     return;
+  }
+
+  const total =
+    state.arrangement.front.length +
+    state.arrangement.middle.length +
+    state.arrangement.back.length;
+
+  if (total === 0) {
+    autoPlaceFromHand();
   }
 
   arrangeStatus.textContent = "Tap two cards to switch them.";
@@ -946,6 +975,22 @@ function manageHandListener() {
     state.unsubHand = listenOwnHand(state.roomId, state.user.uid, (snapshot) => {
       state.handData = snapshot.exists() ? snapshot.data() : null;
 
+      if (
+        state.handData &&
+        !state.handData.submitted &&
+        state.handData.hand &&
+        state.handData.hand.length === 13
+      ) {
+        const total =
+          state.arrangement.front.length +
+          state.arrangement.middle.length +
+          state.arrangement.back.length;
+
+        if (total === 0) {
+          autoPlaceFromHand();
+        }
+      }
+
       if (state.room && state.room.status === "arranging") {
         renderArrangeSection();
       }
@@ -1242,8 +1287,7 @@ $("#auto-arrange-button").addEventListener("click", () => {
 });
 
 $("#clear-arrangement-button").addEventListener("click", () => {
-  state.arrangement = emptyArrangement();
-  state.selectedCards.clear();
+  autoPlaceFromHand();
   renderArrangeSection();
 });
 
