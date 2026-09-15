@@ -417,3 +417,125 @@ button:disabled {
   .banner { font-size:22px; padding:8px 26px; }
   .seat-left { left:2%; } .seat-right { right:2%; }
 }
+
+/* =========================
+   DEAL + REVEAL ANIMATIONS
+========================= */
+
+.deal-in {
+  animation: dealIn 0.4s ease both;
+}
+
+@keyframes dealIn {
+  from { transform: translateY(-46px) rotate(-10deg); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+
+.reveal-layer {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 14, 24, 0.55);
+  z-index: 14;
+}
+
+.reveal-slot {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.reveal-top    { left: 50%; top: 5%;  transform: translateX(-50%); }
+.reveal-left   { left: 7%;  top: 26%; }
+.reveal-right  { right: 7%; top: 26%; }
+.reveal-bottom { left: 50%; bottom: 26%; transform: translateX(-50%); }
+
+.reveal-cards { display: flex; }
+
+.reveal-card {
+  width: 62px;
+  height: 90px;
+  margin-left: -6px;
+  animation: dealIn 0.35s ease both;
+}
+.reveal-card:first-child { margin-left: 0; }
+
+.reveal-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(90deg, #f6c445, #ef9a4d);
+  border-radius: 999px;
+  padding: 4px 14px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 2px 0 rgba(0,0,0,.3);
+  animation: bannerPop 0.3s ease;
+  white-space: nowrap;
+}
+
+.rb-pts.pos { color: #e8f5e9; }
+.rb-pts.neg { color: #ffcdd2; }
+
+.reveal-total {
+  background: rgba(16, 80, 70, 0.9);
+  border-radius: 10px;
+  padding: 4px 12px;
+  font-weight: 800;
+  color: #e0f2f1;
+}
+
+.score-panel {
+  position: absolute;
+  right: 5%;
+  bottom: 9%;
+  background: linear-gradient(180deg, #26a69a, #00695c);
+  border-radius: 12px;
+  padding: 10px 16px;
+  min-width: 150px;
+  z-index: 16;
+  box-shadow: 0 6px 16px rgba(0,0,0,.4);
+}
+
+.sp-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  font-weight: 800;
+  color: #e0f2f1;
+  padding: 2px 0;
+}
+
+.sp-total {
+  border-top: 1px solid rgba(255,255,255,.35);
+  margin-top: 4px;
+  padding-top: 6px;
+}
+
+.ready-area {
+  position: absolute;
+  left: 50%;
+  bottom: 2.5%;
+  transform: translateX(-50%);
+  z-index: 17;
+  background: rgba(0,0,0,.4);
+  border-radius: 14px;
+  padding: 8px 12px;
+  width: min(94%, 460px);
+}
+
+#reveal-skip {
+  position: absolute;
+  right: 4%;
+  top: 4%;
+  z-index: 18;
+}
+
+@media (max-width: 700px) {
+  .reveal-card { width: 44px; height: 64px; margin-left: -4px; }
+  .reveal-banner { font-size: 12px; padding: 3px 10px; }
+  .reveal-left { left: 2%; }
+  .reveal-right { right: 2%; }
+  .score-panel { right: 2%; bottom: 20%; min-width: 120px; }
+}

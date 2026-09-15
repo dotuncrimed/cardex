@@ -57,7 +57,12 @@ const state = {
   autoSubmitting: false,
   selectedCard: null,
   selectedPos: null,
-  lastStatus: null
+  lastStatus: null,
+  revealTimers: [],
+  revealActive: false,
+  revealPlayedFor: null,
+  dealAnimPlayedFor: null,
+  showFullResults: false
 };
 
 function $(selector) {
@@ -278,6 +283,8 @@ function renderOpponentClusters() {
       for (let i = 0; i < n; i++) {
         const b = document.createElement("div");
         b.className = "card-back";
+        b.classList.add("deal-in");
+        b.style.animationDelay = (i * 60) + "ms";
         b.style.transform = `rotate(${((i - (n - 1) / 2) * 6).toFixed(1)}deg)`;
         fan.appendChild(b);
       }
@@ -403,7 +410,7 @@ function renderLobbySection() {
 
   const status = state.room.status;
 
-  if (status === "lobby" || status === "round_end") {
+  if (status === "lobby") {
     lobbySection.classList.remove("hidden");
   }
 
@@ -417,7 +424,7 @@ function renderLobbySection() {
     }
   }
 
-  if (status === "round_end") {
+  if (status === "round_end" && state.showFullResults) {
     resultsSection.classList.remove("hidden");
     renderResultsSection();
   }
@@ -494,6 +501,25 @@ function onMyCardTap(row, index) {
   renderMyRows();
 }
 
+function autoPlaceFromHand() {
+  if (!state.handData || !state.handData.hand || state.handData.hand.length !== 13) {
+    return false;
+  }
+
+  const h = state.handData.hand;
+
+  state.arrangement = {
+    front: h.slice(0, 3),
+    middle: h.slice(3, 8),
+    back: h.slice(8, 13)
+  };
+
+  state.selectedCard = null;
+  state.selectedPos = null;
+
+  return true;
+}
+
 function renderMyRows() {
   ["front", "middle", "back"].forEach((row) => {
     const container = $("#row-" + row);
@@ -506,6 +532,10 @@ function renderMyRows() {
 
     cards.forEach((card, index) => {
       const el = makeCardElement(card, state.selectedCard === card);
+      if (state.room && state.dealAnimPlayedFor !== state.room.roundNumber) {
+        el.classList.add("deal-in");
+        el.style.animationDelay = (index * 70) + "ms";
+      }
       el.style.setProperty("--rot", `${((index - mid) * 4).toFixed(1)}deg`);
       el.addEventListener("click", () => onMyCardTap(row, index));
       container.appendChild(el);
@@ -521,10 +551,185 @@ function renderMyRows() {
         `<span class="hand-name">${info.name}</span>`;
     }
   });
+
+  if (state.room) {
+    state.dealAnimPlayedFor = state.room.roundNumber;
+  }
+}
+
+function clearRevealTimers() {
+  (state.revealTimers || []).forEach(clearTimeout);
+  state.revealTimers = [];
+}
+
+function rowScoreFor(results, uid, rowKey) {
+  const list = results.details[uid] || [];
+  return list.reduce((sum, d) => sum + (d.rows[rowKey] || 0), 0);
+}
+
+function rowNameFor(arrangement, row) {
+  if (!arrangement) return "-";
+  if (row === "front") return evaluate3(arrangement.front).name;
+  return evaluate5(arrangement[row]).name;
+}
+
+function renderRevealSlot(pos, player, arrangement, row, rowScore, cumulative) {
+  const slot = document.getElementById("reveal-" + pos);
+  if (!slot) return;
+
+  slot.innerHTML = "";
+
+  const banner = document.createElement("div");
+  banner.className = "reveal-banner";
+  banner.innerHTML =
+    `<span class="rb-name">${rowNameFor(arrangement, row)}</span>` +
+    `<span class="rb-pts ${rowScore >= 0 ? "pos" : "neg"}">` +
+    `${rowScore >= 0 ? "+" : ""}${rowScore}</span>`;
+
+  const cards = document.createElement("div");
+  cards.className = "reveal-cards";
+
+  ((arrangement && arrangement[row]) || []).forEach((c, i) => {
+    const el = makeCardElement(c, false);
+    el.classList.add("reveal-card");
+    el.style.animationDelay = (i * 80) + "ms";
+    cards.appendChild(el);
+  });
+
+  const total = document.createElement("div");
+  total.className = "reveal-total";
+  total.innerHTML = `Total <b>${cumulative >= 0 ? "+" : ""}${cumulative}</b>`;
+
+  slot.appendChild(banner);
+  slot.appendChild(cards);
+  slot.appendChild(total);
+}
+
+function updateScorePanel(results, myUid, revealedRows) {
+  let total = 0;
+
+  [["front", "sp-front"], ["middle", "sp-mid"], ["back", "sp-back"]]
+    .forEach(([key, id]) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (revealedRows.includes(key)) {
+        const v = rowScoreFor(results, myUid, key);
+        total += v;
+        el.textContent = (v >= 0 ? "+" : "") + v;
+      } else {
+        el.textContent = "";
+      }
+    });
+
+  const tEl = document.getElementById("sp-total");
+  if (tEl) {
+    tEl.textContent = revealedRows.length
+      ? ((total >= 0 ? "+" : "") + total)
+      : "";
+  }
+}
+
+function finalizeReveal() {
+  state.revealActive = false;
+  state.revealPlayedFor = state.room ? state.room.roundNumber : null;
+
+  const skip = document.getElementById("reveal-skip");
+  if (skip) skip.classList.add("hidden");
+
+  const readyArea = document.getElementById("ready-area");
+  if (readyArea) readyArea.classList.remove("hidden");
+
+  renderReadyArea();
+}
+
+function skipReveal() {
+  if (!state.room || !state.room.results) return;
+
+  clearRevealTimers();
+
+  const results = state.room.results;
+  const myPlayer = currentUserPlayerObject();
+  const mySeat = myPlayer ? myPlayer.seat : 0;
+
+  state.room.players.forEach((pl) => {
+    const full = ["front", "middle", "back"]
+      .reduce((s, k) => s + rowScoreFor(results, pl.uid, k), 0);
+    const pos = SEAT_POS[seatOffset(pl.seat, mySeat)];
+    const arr = results.arrangements ? results.arrangements[pl.uid] : null;
+    renderRevealSlot(pos, pl, arr, "back", rowScoreFor(results, pl.uid, "back"), full);
+  });
+
+  updateScorePanel(results, state.user.uid, ["front", "middle", "back"]);
+  finalizeReveal();
+}
+
+function playRevealSequence(results) {
+  clearRevealTimers();
+  state.revealActive = true;
+
+  const layer = document.getElementById("reveal-layer");
+  if (!layer) return;
+  layer.classList.remove("hidden");
+
+  const skip = document.getElementById("reveal-skip");
+  if (skip) skip.classList.remove("hidden");
+
+  const resultsSection = document.getElementById("results-section");
+  if (resultsSection) resultsSection.classList.add("hidden");
+
+  const readyArea = document.getElementById("ready-area");
+  if (readyArea) readyArea.classList.add("hidden");
+
+  ["top", "left", "right", "bottom"].forEach((p) => {
+    const el = document.getElementById("reveal-" + p);
+    if (el) el.innerHTML = "";
+  });
+
+  updateScorePanel(results, state.user.uid, []);
+
+  const myPlayer = currentUserPlayerObject();
+  const mySeat = myPlayer ? myPlayer.seat : 0;
+
+  const seats = state.room.players.map((pl) => ({
+    pl,
+    pos: SEAT_POS[seatOffset(pl.seat, mySeat)]
+  }));
+
+  const rows = ["front", "middle", "back"];
+  const cum = {};
+  seats.forEach((s) => { cum[s.pl.uid] = 0; });
+
+  let t = 500;
+
+  rows.forEach((row, ri) => {
+    state.revealTimers.push(setTimeout(() => {
+      seats.forEach((s, si) => {
+        state.revealTimers.push(setTimeout(() => {
+          const arr = results.arrangements
+            ? results.arrangements[s.pl.uid]
+            : null;
+          const rs = rowScoreFor(results, s.pl.uid, row);
+          cum[s.pl.uid] += rs;
+          renderRevealSlot(s.pos, s.pl, arr, row, rs, cum[s.pl.uid]);
+
+          if (s.pl.uid === state.user.uid) {
+            updateScorePanel(results, state.user.uid, rows.slice(0, ri + 1));
+          }
+        }, si * 250));
+      });
+    }, t));
+
+    t += 2100;
+  });
+
+  state.revealTimers.push(setTimeout(() => {
+    finalizeReveal();
+  }, t + 400));
 }
 
 function renderArrangeSection() {
   const arrangeStatus = $("#arrange-status");
+  if (!arrangeStatus) return;
 
   if (!state.handData) {
     arrangeStatus.textContent = "Waiting for cards...";
@@ -554,6 +759,15 @@ function renderArrangeSection() {
     }, 600);
 
     return;
+  }
+
+  const total =
+    state.arrangement.front.length +
+    state.arrangement.middle.length +
+    state.arrangement.back.length;
+
+  if (total === 0) {
+    autoPlaceFromHand();
   }
 
   arrangeStatus.textContent = "Tap two cards to switch them.";
@@ -925,14 +1139,64 @@ function renderRoom() {
   if (state.room.roundNumber !== state.roundInitialized) {
     state.arrangement = emptyArrangement();
     state.selectedCards.clear();
+    state.selectedCard = null;
+    state.selectedPos = null;
     state.roundInitialized = state.room.roundNumber;
+    state.revealPlayedFor = null;
+    state.dealAnimPlayedFor = null;
+    state.showFullResults = false;
+  }
+
+  if (state.lastStatus && state.lastStatus !== state.room.status) {
+    if (state.lastStatus === "arranging" && state.room.status === "scoring") {
+      showBanner("Start Comparing", 1600);
+    }
+    if (
+      state.room.status === "arranging" &&
+      ["lobby", "round_end"].includes(state.lastStatus)
+    ) {
+      showBanner("Start", 1200);
+    }
+    if (state.room.status !== "round_end") {
+      clearRevealTimers();
+      state.revealActive = false;
+      const layer = document.getElementById("reveal-layer");
+      if (layer) layer.classList.add("hidden");
+      const readyArea = document.getElementById("ready-area");
+      if (readyArea) readyArea.classList.add("hidden");
+    }
+  }
+  state.lastStatus = state.room.status;
+
+  const tableEl = document.querySelector(".pg-table");
+  if (tableEl) {
+    tableEl.classList.toggle(
+      "arranging",
+      ["arranging", "scoring"].includes(state.room.status)
+    );
   }
 
   renderRoomInfo();
   renderSeats();
-  selectRow(state.targetRow || "front");
+  renderOpponentClusters();
   renderLobbySection();
   manageHandListener();
+
+  if (state.room.status === "round_end") {
+    if (
+      state.room.results &&
+      state.revealPlayedFor !== state.room.roundNumber &&
+      !state.revealActive
+    ) {
+      playRevealSequence(state.room.results);
+    } else {
+      renderReadyArea();
+      const readyArea = document.getElementById("ready-area");
+      if (readyArea && state.revealPlayedFor === state.room.roundNumber) {
+        readyArea.classList.remove("hidden");
+      }
+    }
+  }
 }
 
 function manageHandListener() {
@@ -945,6 +1209,22 @@ function manageHandListener() {
   if (shouldListen && !state.unsubHand) {
     state.unsubHand = listenOwnHand(state.roomId, state.user.uid, (snapshot) => {
       state.handData = snapshot.exists() ? snapshot.data() : null;
+
+      if (
+        state.handData &&
+        !state.handData.submitted &&
+        state.handData.hand &&
+        state.handData.hand.length === 13
+      ) {
+        const total =
+          state.arrangement.front.length +
+          state.arrangement.middle.length +
+          state.arrangement.back.length;
+
+        if (total === 0) {
+          autoPlaceFromHand();
+        }
+      }
 
       if (state.room && state.room.status === "arranging") {
         renderArrangeSection();
@@ -1242,8 +1522,7 @@ $("#auto-arrange-button").addEventListener("click", () => {
 });
 
 $("#clear-arrangement-button").addEventListener("click", () => {
-  state.arrangement = emptyArrangement();
-  state.selectedCards.clear();
+  autoPlaceFromHand();
   renderArrangeSection();
 });
 
@@ -1442,5 +1721,14 @@ document.addEventListener("click", (event) => {
   const tab = event.target.closest(".pg-row-tab");
   if (tab) {
     selectRow(tab.dataset.row);
+  }
+
+  if (event.target.closest("#reveal-skip")) {
+    skipReveal();
+  }
+
+  if (event.target.closest("#view-results-button")) {
+    state.showFullResults = !state.showFullResults;
+    renderLobbySection();
   }
 });
