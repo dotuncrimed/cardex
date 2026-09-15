@@ -249,11 +249,22 @@ function clearRoomListeners() {
 function clearRoomState() {
   clearRoomListeners();
 
+  // Cleanup cash listeners
+  Object.values(state.cashListeners || {}).forEach((un) => un && un());
+  state.cashListeners = {};
+  state.cashMap = {};
+
   state.room = null;
   state.handData = null;
   state.arrangement = emptyArrangement();
   state.selectedCards.clear();
   state.roundInitialized = null;
+  state.zoomOpen = false;
+  state.revealActive = false;
+  state.showFullResults = false;
+
+  // Clear any pending timers
+  clearRevealTimers();
 
   localStorage.removeItem("currentRoomId");
   state.roomId = null;
@@ -1943,5 +1954,19 @@ if (readyArrangeBtn) {
     }
     state.zoomOpen = false;
     renderArrangeSection();
+  });
+}
+
+const swapMidBackBtn = document.getElementById("swap-mid-back-button");
+if (swapMidBackBtn && !swapMidBackBtn.dataset.bound) {
+  swapMidBackBtn.dataset.bound = "true";
+  swapMidBackBtn.addEventListener("click", () => {
+    const tempMid = [...state.arrangement.middle];
+    const tempBack = [...state.arrangement.back];
+    state.arrangement.middle = tempBack;
+    state.arrangement.back = tempMid;
+    if (typeof renderMyRows === "function") {
+      renderMyRows();
+    }
   });
 }
