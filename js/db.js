@@ -209,6 +209,7 @@ export async function joinRoomByCode(user, code, displayName) {
 
   players.sort((a, b) => a.seat - b.seat);
   await updateDoc(roomRef(code), { players, spectators });
+  await claimHostIfOrphan(code);
   return code;
 }
 
@@ -239,6 +240,7 @@ export async function takeSeat(user, roomId, displayName) {
 
   players.sort((a, b) => a.seat - b.seat);
   await updateDoc(roomRef(roomId), { players, spectators });
+  await claimHostIfOrphan(roomId);
 }
 
 export async function leaveRoom(user, roomId) {
@@ -246,37 +248,38 @@ export async function leaveRoom(user, roomId) {
 
   if (!room) return;
 
-  if (["arranging", "scoring"].includes(room.status)) {
-    throw new Error("Cannot leave during an active round.");
+  const leavingPlayer = room.players.find((p) => p.uid === user.uid);
+  let players = room.players.filter((p) => p.uid !== user.uid);
+  let spectators = room.spectators.filter((s) => s.uid !== user.uid);
+  let hostId = room.hostId;
+
+  const activeRound = ["arranging", "scoring"].includes(room.status);
+
+  if (hostId === user.uid) {
+    const nextHost = players.find((p) => !p.isBot);
+    if (!nextHost) {
+      await deleteDoc(roomRef(roomId));
+      return;
+    }
+    hostId = nextHost.uid;
   }
 
-  let players = room.players.filter((player) => player.uid !== user.uid);
-  let spectators = room.spectators.filter((spectator) => spectator.uid !== user.uid);
+  if (activeRound && leavingPlayer && players.some((p) => !p.isBot)) {
+    players.push(makeBot(leavingPlayer.seat, room.settings.botLevel));
+  }
+
+  players.sort((a, b) => a.seat - b.seat);
 
   if (players.length === 0 && spectators.length === 0) {
     await deleteDoc(roomRef(roomId));
     return;
   }
 
-  let hostId = room.hostId;
-
-  if (hostId === user.uid) {
-    const nextHost = players.find((player) => !player.isBot);
-
-    if (!nextHost) {
-      await deleteDoc(roomRef(roomId));
-      return;
-    }
-
-    hostId = nextHost.uid;
-  }
-
-  players.sort((a, b) => a.seat - b.seat);
-
   await updateDoc(roomRef(roomId), {
     players,
     spectators,
-    hostId
+    hostId,
+    updatedAt: Date.now()
   });
 }
 
@@ -534,14 +537,46 @@ export async function replaceUnreadyWithBots(roomId) {
 
   if (!room) return;
 
-  let players = room.players.filter((player) => {
-    return player.isBot || player.ready;
-  });
+  let players = [...room.players];
+  let hostId = room.hostId;
+
+  const hostPlayer = players.find((p) => p.uid === hostId);
+  if (hostPlayer && !hostPlayer.isBot && !hostPlayer.ready) {
+    const successor = players.find(
+      (p) => !p.isBot && p.ready && p.uid !== hostId
+    );
+    if (successor) {
+      hostId = successor.uid;
+    } else {
+      return; // pause instead of ejecting the host
+    }
+  }
+
+  players = players.filter((p) => p.isBot || p.ready);
+
+  if (!players.some((p) => !p.isBot)) return; // never run a bot-only table
 
   players = ensureBots(players, room.settings.botLevel);
+  players.sort((a, b) => a.seat - b.seat);
 
   await updateDoc(roomRef(roomId), {
     players,
+    hostId,
+    updatedAt: Date.now()
+  });
+}
+
+export async function claimHostIfOrphan(roomId) {
+  const room = await getRoom(roomId);
+  if (!room) return;
+
+  const hostInPlayers = room.players.some((p) => p.uid === room.hostId);
+  if (hostInPlayers) return;
+
+  const firstHuman = room.players.find((p) => !p.isBot);
+
+  await updateDoc(roomRef(roomId), {
+    hostId: firstHuman ? firstHuman.uid : null,
     updatedAt: Date.now()
   });
 }

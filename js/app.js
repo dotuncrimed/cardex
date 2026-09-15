@@ -1380,60 +1380,74 @@ async function hostController() {
   if (state.room.hostId !== state.user.uid) return;
   if (state.hostBusy) return;
 
+  const now = Date.now();
+  if (now < (state.hostCooldownUntil || 0)) return;
+
   const room = state.room;
+  const humans = room.players.filter((p) => !p.isBot);
+
+  const fail = () => {
+    state.hostFailCount = (state.hostFailCount || 0) + 1;
+    if (state.hostFailCount >= 3) {
+      state.hostCooldownUntil = Date.now() + 10000;
+      state.hostFailCount = 0;
+      console.warn("hostController backing off 10s");
+    }
+  };
+
+  const succeed = () => {
+    state.hostFailCount = 0;
+  };
 
   if (room.status === "arranging") {
-    const allSubmitted = room.players.every((player) => player.submitted);
-
+    const allSubmitted = room.players.every((p) => p.submitted);
     if (allSubmitted) {
       state.hostBusy = true;
-
       try {
         await finishRound(room.roomCode, state.user);
+        succeed();
       } catch (error) {
         console.error(error);
-        setRoomMessage("Failed to finish round.");
+        fail();
       } finally {
         state.hostBusy = false;
       }
     }
-
     return;
   }
 
   if (room.status === "round_end") {
-    const humans = room.players.filter((player) => !player.isBot);
-    const readyHumans = humans.filter((player) => player.ready);
+    if (humans.length === 0) return; // never auto-run a bot-only table
 
-    if (humans.length > 0 && readyHumans.length === humans.length) {
+    const readyHumans = humans.filter((p) => p.ready);
+
+    if (readyHumans.length === humans.length) {
       state.hostBusy = true;
-
       try {
         await sleep(800);
         await startRound(room.roomCode, state.user);
+        succeed();
       } catch (error) {
         console.error(error);
         setRoomMessage(error.message || "Failed to start next round.");
+        fail();
       } finally {
         state.hostBusy = false;
       }
-
       return;
     }
 
-    if (room.phaseEndsAt && Date.now() > room.phaseEndsAt) {
-      if (readyHumans.length > 0) {
-        state.hostBusy = true;
-
-        try {
-          await replaceUnreadyWithBots(room.roomCode);
-          await startRound(room.roomCode, state.user);
-        } catch (error) {
-          console.error(error);
-          setRoomMessage(error.message || "Failed to start after timer.");
-        } finally {
-          state.hostBusy = false;
-        }
+    if (room.phaseEndsAt && Date.now() > room.phaseEndsAt && readyHumans.length > 0) {
+      state.hostBusy = true;
+      try {
+        await replaceUnreadyWithBots(room.roomCode);
+        await startRound(room.roomCode, state.user);
+        succeed();
+      } catch (error) {
+        console.error(error);
+        fail();
+      } finally {
+        state.hostBusy = false;
       }
     }
   }
@@ -1631,12 +1645,14 @@ $("#join-room-button").addEventListener("click", async () => {
 
 async function exitToMenu() {
   try {
-    await leaveRoom(state.user, state.roomId);
-    clearRoomState();
-    showScreen("menu");
+    if (state.roomId && state.user) {
+      await leaveRoom(state.user, state.roomId);
+    }
   } catch (error) {
-    setRoomMessage(error.message || "Cannot leave room.");
+    console.warn("leaveRoom failed, escaping locally:", error);
   }
+  clearRoomState();
+  showScreen("menu");
 }
 
 $("#leave-room-button").addEventListener("click", exitToMenu);
