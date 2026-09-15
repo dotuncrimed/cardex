@@ -728,6 +728,11 @@ function playRevealSequence(results) {
 }
 
 function renderArrangeSection() {
+  const autoBtn = $("#auto-arrange-button");
+  if (autoBtn) {
+    autoBtn.classList.toggle("hidden", !state.room.settings.autoArrange);
+  }
+
   const arrangeStatus = $("#arrange-status");
   if (!arrangeStatus) return;
 
@@ -1475,7 +1480,7 @@ $("#join-room-button").addEventListener("click", async () => {
   }
 });
 
-$("#leave-room-button").addEventListener("click", async () => {
+async function exitToMenu() {
   try {
     await leaveRoom(state.user, state.roomId);
     clearRoomState();
@@ -1483,7 +1488,10 @@ $("#leave-room-button").addEventListener("click", async () => {
   } catch (error) {
     setRoomMessage(error.message || "Cannot leave room.");
   }
-});
+}
+
+$("#leave-room-button").addEventListener("click", exitToMenu);
+$("#exit-room-button").addEventListener("click", exitToMenu);
 
 $("#start-room-button").addEventListener("click", async () => {
   try {
@@ -1729,6 +1737,11 @@ document.addEventListener("click", (event) => {
 
   if (event.target.closest("#view-results-button")) {
     state.showFullResults = !state.showFullResults;
+    renderLobbySection();
+  }
+
+  if (event.target.closest("#close-results-button")) {
+    state.showFullResults = false;
     renderLobbySection();
   }
 });
