@@ -179,11 +179,24 @@
           </div>
         </div>
 
-        <!-- ARRANGE (your 3 rows on the table) -->
+        <!-- ARRANGE (table view) -->
         <div id="arrange-section" class="hidden">
           <div id="arrange-status" class="pg-message"></div>
+          <div class="table-my-rows" id="table-my-rows"></div>
+          <div class="arrange-controls">
+            <button id="open-zoom-button" class="pg-btn">Arrange</button>
+            <button id="submit-arrangement-button" class="ready-btn">Submit</button>
+          </div>
+        </div>
 
-          <div class="my-rows">
+        <!-- ZOOM ARRANGE VIEW -->
+        <div id="zoom-view" class="zoom-view hidden">
+          <div class="zoom-head">
+            <div class="pg-timer hidden" id="zoom-timer">--</div>
+            <div>Arrange Your Cards</div>
+          </div>
+
+          <div class="my-rows zoom-rows">
             <div class="my-row">
               <div class="row-label" id="label-front"></div>
               <div class="row-cards" id="row-front"></div>
@@ -198,10 +211,10 @@
             </div>
           </div>
 
-          <div class="arrange-controls">
-            <button id="auto-arrange-button" class="pg-btn">Auto</button>
+          <div class="zoom-controls">
+            <button id="auto-arrange-button" class="pg-btn hidden">Auto</button>
             <button id="clear-arrangement-button" class="pg-btn">Reset</button>
-            <button id="submit-arrangement-button" class="ready-btn">Ready</button>
+            <button id="ready-arrange-button" class="ready-btn">Ready</button>
           </div>
         </div>
 
