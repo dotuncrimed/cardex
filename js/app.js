@@ -285,6 +285,12 @@ function renderMenu() {
 
   $("#menu-username").textContent = state.userData?.displayName || state.user.username;
   $("#menu-cash").textContent = state.userData?.cash ?? 0;
+
+  const avatarEl = $("#menu-avatar");
+  if (avatarEl) {
+    const name = state.userData?.displayName || state.user.username || "?";
+    avatarEl.textContent = name.charAt(0).toUpperCase();
+  }
 }
 
 function makeCardElement(card, selected = false) {
