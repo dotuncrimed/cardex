@@ -10,7 +10,7 @@ import {
   sortCards
 } from "./cards.js";
 
-import { isLegalArrangement } from "./evaluator.js";
+import { isLegalArrangement, evaluate5, evaluate3, compare5 } from "./evaluator.js";
 import { botArrangeHand } from "./bot.js";
 
 import {
@@ -54,7 +54,10 @@ const state = {
   unsubUser: null,
   adminLoggedIn: sessionStorage.getItem("adminLoggedIn") === "true",
   hostBusy: false,
-  autoSubmitting: false
+  autoSubmitting: false,
+  selectedCard: null,
+  selectedPos: null,
+  lastStatus: null
 };
 
 function $(selector) {
@@ -189,40 +192,98 @@ function makeCardElement(card, selected = false) {
   return el;
 }
 
+const SEAT_POS = ["bottom", "left", "top", "right"];
+
+function seatOffset(playerSeat, mySeat) {
+  return ((playerSeat - mySeat) % 4 + 4) % 4;
+}
+
+function showBanner(text, ms) {
+  const b = $("#banner");
+  if (!b) return;
+  b.textContent = text;
+  b.classList.remove("hidden");
+  setTimeout(() => b.classList.add("hidden"), ms);
+}
+
 function renderSeats() {
-  const container = $("#pg-seats");
-  if (!container || !state.room) return;
+  ["top", "left", "right", "bottom"].forEach((p) => {
+    const el = $("#seat-" + p);
+    if (el) el.innerHTML = "";
+  });
 
-  container.innerHTML = "";
+  if (!state.room || !state.user) return;
 
-  const players = [...state.room.players].sort((a, b) => a.seat - b.seat);
+  const myPlayer = currentUserPlayerObject();
+  const mySeat = myPlayer ? myPlayer.seat : 0;
 
-  players.forEach((player) => {
-    const isSelf = state.user && player.uid === state.user.uid;
+  state.room.players.forEach((player) => {
+    const pos = SEAT_POS[seatOffset(player.seat, mySeat)];
+    const el = $("#seat-" + pos);
+    if (!el) return;
 
-    const seat = document.createElement("div");
-    seat.className =
-      "pg-seat" +
-      (isSelf ? " self" : "") +
-      (player.isBot ? " bot" : "");
-
-    const initial = (player.displayName || "?").charAt(0).toUpperCase();
+    const isSelf = player.uid === state.user.uid;
 
     let status = "";
-
-    if (state.room.status === "arranging" || state.room.status === "scoring") {
+    if (["arranging", "scoring"].includes(state.room.status)) {
       status = player.submitted ? "✓" : "…";
     } else if (state.room.status === "round_end") {
       status = player.ready ? "✓" : "…";
     }
 
-    seat.innerHTML = `
-      <div class="pg-avatar">${initial}</div>
-      <div class="pg-seat-name">${player.displayName}${isSelf ? " (You)" : ""}</div>
-      <div class="pg-seat-status">${status}</div>
+    el.innerHTML = `
+      <div class="avatar">${(player.displayName || "?").charAt(0).toUpperCase()}</div>
+      <div class="coin-pill">${isSelf ? (state.userData?.cash ?? 0) : player.displayName}</div>
+      <div class="seat-status">${status}${player.isBot ? " 🤖" : ""}</div>
     `;
+  });
+}
 
-    container.appendChild(seat);
+function renderOpponentClusters() {
+  const positions = ["top", "left", "right"];
+  const show = state.room && ["arranging", "scoring"].includes(state.room.status);
+
+  positions.forEach((p) => {
+    const el = $("#cluster-" + p);
+    if (!el) return;
+    if (!show) {
+      el.classList.add("hidden");
+      el.innerHTML = "";
+      delete el.dataset.filled;
+    }
+  });
+
+  if (!show) return;
+
+  const myPlayer = currentUserPlayerObject();
+  const mySeat = myPlayer ? myPlayer.seat : 0;
+
+  state.room.players.forEach((player) => {
+    if (state.user && player.uid === state.user.uid) return;
+
+    const pos = SEAT_POS[seatOffset(player.seat, mySeat)];
+    if (pos === "bottom") return;
+
+    const el = $("#cluster-" + pos);
+    if (!el || el.dataset.filled) return;
+
+    el.dataset.filled = "1";
+    el.classList.remove("hidden");
+    el.innerHTML = "";
+
+    [3, 5, 5].forEach((n) => {
+      const fan = document.createElement("div");
+      fan.className = "back-fan";
+
+      for (let i = 0; i < n; i++) {
+        const b = document.createElement("div");
+        b.className = "card-back";
+        b.style.transform = `rotate(${((i - (n - 1) / 2) * 6).toFixed(1)}deg)`;
+        fan.appendChild(b);
+      }
+
+      el.appendChild(fan);
+    });
   });
 }
 
@@ -324,6 +385,9 @@ function renderRoomInfo() {
 
   const potEl = $("#pg-pot");
   if (potEl) potEl.textContent = "Pot " + (state.room.pot || 0);
+
+  const hudCash = $("#hud-cash");
+  if (hudCash) hudCash.textContent = state.userData?.cash ?? 0;
 }
 
 function renderLobbySection() {
@@ -374,6 +438,91 @@ function renderLobbySection() {
   renderPlayerList();
 }
 
+function rowLabelInfo(row) {
+  const arr = state.arrangement;
+
+  if (row === "front") {
+    const ev = evaluate3(arr.front);
+    return { name: ev.name, ok: arr.front.length === 3 };
+  }
+
+  if (row === "middle") {
+    const ev = evaluate5(arr.middle);
+    let ok = arr.middle.length === 5;
+    if (ok) {
+      const f = evaluate3(arr.front);
+      const req = f.category === 3 ? 3 : f.category === 2 ? 2 : 1;
+      ok = ev.category >= req;
+    }
+    return { name: ev.name, ok };
+  }
+
+  const ev = evaluate5(arr.back);
+  let ok = arr.back.length === 5;
+  if (ok && arr.middle.length === 5) {
+    ok = compare5(ev, evaluate5(arr.middle)) >= 0;
+  }
+  return { name: ev.name, ok };
+}
+
+function onMyCardTap(row, index) {
+  const card = state.arrangement[row][index];
+
+  if (state.selectedCard === null) {
+    state.selectedCard = card;
+    state.selectedPos = { row, index };
+    renderMyRows();
+    return;
+  }
+
+  if (state.selectedCard === card) {
+    state.selectedCard = null;
+    state.selectedPos = null;
+    renderMyRows();
+    return;
+  }
+
+  const from = state.selectedPos;
+  const a = state.arrangement[from.row][from.index];
+  const b = state.arrangement[row][index];
+
+  state.arrangement[from.row][from.index] = b;
+  state.arrangement[row][index] = a;
+
+  state.selectedCard = null;
+  state.selectedPos = null;
+  renderMyRows();
+}
+
+function renderMyRows() {
+  ["front", "middle", "back"].forEach((row) => {
+    const container = $("#row-" + row);
+    if (!container) return;
+
+    container.innerHTML = "";
+
+    const cards = state.arrangement[row];
+    const mid = (cards.length - 1) / 2;
+
+    cards.forEach((card, index) => {
+      const el = makeCardElement(card, state.selectedCard === card);
+      el.style.setProperty("--rot", `${((index - mid) * 4).toFixed(1)}deg`);
+      el.addEventListener("click", () => onMyCardTap(row, index));
+      container.appendChild(el);
+    });
+
+    const label = $("#label-" + row);
+    if (label) {
+      const info = rowLabelInfo(row);
+      label.classList.toggle("ok", info.ok);
+      label.classList.toggle("bad", !info.ok);
+      label.innerHTML =
+        `<span class="check">${info.ok ? "✓" : "✗"}</span>` +
+        `<span class="hand-name">${info.name}</span>`;
+    }
+  });
+}
+
 function renderArrangeSection() {
   const arrangeStatus = $("#arrange-status");
 
@@ -383,10 +532,9 @@ function renderArrangeSection() {
   }
 
   if (state.handData.submitted) {
-    arrangeStatus.textContent = "You submitted. Waiting for other players...";
+    arrangeStatus.textContent = "Waiting for other players...";
     disableArrangeControls(true);
-    renderAssignedCards();
-    renderHandCards();
+    renderMyRows();
     return;
   }
 
@@ -408,10 +556,9 @@ function renderArrangeSection() {
     return;
   }
 
-  arrangeStatus.textContent = "Arrange your cards.";
+  arrangeStatus.textContent = "Tap two cards to switch them.";
   disableArrangeControls(false);
-  renderAssignedCards();
-  renderHandCards();
+  renderMyRows();
 }
 
 function disableArrangeControls(disabled) {
