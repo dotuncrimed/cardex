@@ -1505,12 +1505,30 @@ setInterval(() => {
   renderRoomInfo();
 
   const timerEl = $("#pg-timer");
+  const zoomTimerEl = $("#zoom-timer");
 
-  if (timerEl && state.room.phaseEndsAt) {
-    const seconds = Math.max(0, Math.ceil((state.room.phaseEndsAt - Date.now()) / 1000));
-    timerEl.textContent = seconds;
-  } else if (timerEl) {
-    timerEl.textContent = "--";
+  const arranging = state.room.status === "arranging";
+  const readyPhase = state.room.status === "round_end" && state.revealPlayedFor === state.room.roundNumber;
+
+  const showTableTimer = (arranging || readyPhase) && state.room.phaseEndsAt;
+  const showZoomTimer = arranging && state.room.phaseEndsAt && state.zoomOpen;
+
+  if (timerEl) {
+    timerEl.classList.toggle("hidden", !showTableTimer);
+    if (showTableTimer) {
+      const seconds = Math.max(0, Math.ceil((state.room.phaseEndsAt - Date.now()) / 1000));
+      timerEl.textContent = seconds;
+    } else {
+      timerEl.textContent = "--";
+    }
+  }
+
+  if (zoomTimerEl) {
+    zoomTimerEl.classList.toggle("hidden", !showZoomTimer);
+    if (showZoomTimer) {
+      const seconds = Math.max(0, Math.ceil((state.room.phaseEndsAt - Date.now()) / 1000));
+      zoomTimerEl.textContent = seconds;
+    }
   }
 
   autoSubmitIfNeeded();
@@ -1623,6 +1641,15 @@ async function exitToMenu() {
 
 $("#leave-room-button").addEventListener("click", exitToMenu);
 $("#exit-room-button").addEventListener("click", exitToMenu);
+
+$("#join-game-button").addEventListener("click", async () => {
+  try {
+    await takeSeat(state.user, state.roomId, state.userData?.displayName || state.user.username);
+    setRoomMessage("Joined the game!");
+  } catch (error) {
+    setRoomMessage(error.message || "Cannot join game.");
+  }
+});
 
 $("#start-room-button").addEventListener("click", async () => {
   try {
