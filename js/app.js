@@ -62,7 +62,11 @@ const state = {
   revealActive: false,
   revealPlayedFor: null,
   dealAnimPlayedFor: null,
-  showFullResults: false
+  showFullResults: false,
+  zoomOpen: false,
+  cashMap: {},
+  cashListeners: {},
+  coinsFlyedFor: null,
 };
 
 function $(selector) {
@@ -72,6 +76,112 @@ function $(selector) {
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+function formatCash(n) {
+  n = Number(n) || 0;
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
+  return String(n);
+}
+
+function syncCashListeners() {
+  if (!state.room) return;
+
+  const minBet = Number(state.room.settings.minBet) || 0;
+  const needed = {};
+
+  state.room.players.forEach((p) => {
+    if (p.isBot) {
+      state.cashMap[p.uid] = minBet * 10;
+    } else {
+      needed[p.username] = true;
+    }
+  });
+
+  if (state.user) needed[state.user.username] = true;
+
+  Object.keys(needed).forEach((un) => {
+    if (!state.cashListeners[un]) {
+      state.cashListeners[un] = listenUser(un, (data) => {
+        state.cashMap[un] = data ? Number(data.cash) || 0 : 0;
+        renderSeats();
+      });
+    }
+  });
+
+  Object.keys(state.cashListeners).forEach((un) => {
+    if (!needed[un]) {
+      state.cashListeners[un]();
+      delete state.cashListeners[un];
+    }
+  });
+}
+
+function renderTableMyRows() {
+  const wrap = document.getElementById("table-my-rows");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+
+  ["front", "middle", "back"].forEach((row) => {
+    const line = document.createElement("div");
+    line.className = "tmr-row";
+
+    const tag = document.createElement("span");
+    tag.className = "tmr-tag";
+    tag.textContent = row.toUpperCase();
+
+    const cards = document.createElement("div");
+    cards.className = "tmr-cards";
+
+    (state.arrangement[row] || []).forEach((c) => {
+      const el = makeCardElement(c, false);
+      el.classList.add("tmr-card");
+      cards.appendChild(el);
+    });
+
+    line.appendChild(tag);
+    line.appendChild(cards);
+    wrap.appendChild(line);
+  });
+}
+
+function flyCoinsToWinner(winnerUid) {
+  if (!state.room) return;
+  const layer = document.querySelector(".pg-table");
+  const winner = state.room.players.find((p) => p.uid === winnerUid);
+  if (!layer || !winner) return;
+
+  const myPlayer = currentUserPlayerObject();
+  const mySeat = myPlayer ? myPlayer.seat : 0;
+  const pos = SEAT_POS[seatOffset(winner.seat, mySeat)];
+  const target = document.querySelector("#seat-" + pos);
+  if (!target) return;
+
+  const lR = layer.getBoundingClientRect();
+  const sR = layer.getBoundingClientRect();
+  const tR = target.getBoundingClientRect();
+
+  const sx = sR.width / 2;
+  const sy = sR.height / 2;
+
+  for (let i = 0; i < 14; i++) {
+    const c = document.createElement("div");
+    c.className = "fly-coin";
+    c.style.left = sx + "px";
+    c.style.top = sy + "px";
+
+    const tx = tR.left - lR.left + tR.width / 2 + (Math.random() * 40 - 20);
+    const ty = tR.top - lR.top + tR.height / 2 + (Math.random() * 30 - 15);
+
+    c.style.setProperty("--tx", (tx - sx) + "px");
+    c.style.setProperty("--ty", (ty - sy) + "px");
+    c.style.animationDelay = (i * 60) + "ms";
+
+    layer.appendChild(c);
+    setTimeout(() => c.remove(), 1800 + i * 60);
+  }
+}
+
+
 
 function showScreen(name) {
   const screens = [
@@ -735,29 +845,36 @@ function playRevealSequence(results) {
 
 function renderArrangeSection() {
   const autoBtn = $("#auto-arrange-button");
-  if (autoBtn) {
-    autoBtn.classList.toggle("hidden", !state.room.settings.autoArrange);
-  }
+  if (autoBtn) autoBtn.classList.toggle("hidden", !state.room.settings.autoArrange);
 
-  const arrangeStatus = $("#arrange-status");
-  if (!arrangeStatus) return;
+  const zoom = document.getElementById("zoom-view");
+  const tableSec = document.getElementById("arrange-section");
+  if (!zoom || !tableSec) return;
+
+  const st = $("#arrange-status");
 
   if (!state.handData) {
-    arrangeStatus.textContent = "Waiting for cards...";
+    if (st) st.textContent = "Waiting for cards...";
+    zoom.classList.add("hidden");
+    tableSec.classList.remove("hidden");
     return;
   }
 
   if (state.handData.submitted) {
-    arrangeStatus.textContent = "Waiting for other players...";
+    zoom.classList.add("hidden");
+    tableSec.classList.remove("hidden");
+    if (st) st.textContent = "Submitted. Waiting for other players...";
     disableArrangeControls(true);
-    renderMyRows();
+    renderTableMyRows();
     return;
   }
 
   if (state.room.settings.autoArrange) {
-    arrangeStatus.textContent = "Auto-arranging your cards...";
+    zoom.classList.add("hidden");
+    tableSec.classList.remove("hidden");
+    if (st) st.textContent = "Auto-arranging your cards...";
     disableArrangeControls(true);
-
+    renderTableMyRows();
     setTimeout(async () => {
       const arrangement = botArrangeHand(state.handData.hand, "hard");
       try {
@@ -768,23 +885,27 @@ function renderArrangeSection() {
         setRoomMessage("Auto-arrange failed.");
       }
     }, 600);
-
     return;
   }
 
-  const total =
-    state.arrangement.front.length +
-    state.arrangement.middle.length +
-    state.arrangement.back.length;
-
-  if (total === 0) {
-    autoPlaceFromHand();
+  if (state.zoomOpen) {
+    tableSec.classList.add("hidden");
+    zoom.classList.remove("hidden");
+    const total =
+      state.arrangement.front.length +
+      state.arrangement.middle.length +
+      state.arrangement.back.length;
+    if (total === 0) autoPlaceFromHand();
+    renderMyRows();
+  } else {
+    zoom.classList.add("hidden");
+    tableSec.classList.remove("hidden");
+    if (st) st.textContent = "Cards arranged. Submit or re-arrange.";
+    disableArrangeControls(false);
+    renderTableMyRows();
   }
-
-  arrangeStatus.textContent = "Tap two cards to switch them.";
-  disableArrangeControls(false);
-  renderMyRows();
 }
+
 
 function disableArrangeControls(disabled) {
   $("#assign-front-button").disabled = disabled;

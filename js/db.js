@@ -182,88 +182,63 @@ export async function joinRoomByCode(user, code, displayName) {
   if (["arranging", "scoring"].includes(room.status)) {
     const spectators = [
       ...room.spectators,
-      {
-        uid: user.uid,
-        username: user.username,
-        displayName,
-        joinedAt: Date.now()
-      }
+      { uid: user.uid, username: user.username, displayName, joinedAt: Date.now() }
     ];
-
     await updateDoc(roomRef(code), { spectators });
     return code;
   }
 
+  const minBet = Number(room.settings.minBet) || 0;
+  const joiner = await getUserData(user.username);
+  const hasMoney = Boolean(joiner) && Number(joiner.cash) >= minBet;
+
   let players = [...room.players];
   let spectators = [...room.spectators];
-
   const emptySeat = firstEmptySeat(players);
 
-  if (emptySeat !== null) {
+  if (emptySeat !== null && hasMoney) {
     players.push(makeHumanSeat({ ...user, displayName }, emptySeat));
   } else {
-    const botIndex = players.findIndex((player) => player.isBot);
-
-    if (botIndex >= 0) {
+    const botIndex = players.findIndex((p) => p.isBot);
+    if (hasMoney && botIndex >= 0) {
       players[botIndex] = makeHumanSeat({ ...user, displayName }, players[botIndex].seat);
     } else {
-      spectators.push({
-        uid: user.uid,
-        username: user.username,
-        displayName,
-        joinedAt: Date.now()
-      });
+      spectators.push({ uid: user.uid, username: user.username, displayName, joinedAt: Date.now() });
     }
   }
 
   players.sort((a, b) => a.seat - b.seat);
-
-  await updateDoc(roomRef(code), {
-    players,
-    spectators
-  });
-
+  await updateDoc(roomRef(code), { players, spectators });
   return code;
 }
 
 export async function takeSeat(user, roomId, displayName) {
   const room = await getRoom(roomId);
-
   if (!room) return;
-
-  const alreadyPlayer = room.players.some((player) => player.uid === user.uid);
-
-  if (alreadyPlayer) {
-    return;
-  }
-
+  if (room.players.some((p) => p.uid === user.uid)) return;
   if (!["lobby", "round_end"].includes(room.status)) {
     throw new Error("You can only take a seat between rounds.");
   }
 
-  let players = [...room.players];
-  let spectators = room.spectators.filter((spectator) => spectator.uid !== user.uid);
+  const minBet = Number(room.settings.minBet) || 0;
+  const me = await getUserData(user.username);
+  const hasMoney = Boolean(me) && Number(me.cash) >= minBet;
+  if (!hasMoney) throw new Error("Not enough cash to take a seat.");
 
+  let players = [...room.players];
+  let spectators = room.spectators.filter((s) => s.uid !== user.uid);
   const emptySeat = firstEmptySeat(players);
 
   if (emptySeat !== null) {
     players.push(makeHumanSeat({ ...user, displayName }, emptySeat));
   } else {
-    const botIndex = players.findIndex((player) => player.isBot);
-
-    if (botIndex < 0) {
-      throw new Error("No seat available.");
-    }
-
+    const botIndex = players.findIndex((p) => p.isBot);
+    if (botIndex < 0) throw new Error("No seat available.");
     players[botIndex] = makeHumanSeat({ ...user, displayName }, players[botIndex].seat);
   }
 
   players.sort((a, b) => a.seat - b.seat);
-
-  await updateDoc(roomRef(roomId), {
-    players,
-    spectators
-  });
+  await updateDoc(roomRef(roomId), { players, spectators });
 }
 
 export async function leaveRoom(user, roomId) {
