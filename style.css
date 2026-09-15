@@ -560,9 +560,7 @@ button:disabled {
   background: rgba(255, 255, 255, 0.3);
 }
 
-/* =========================
-   ZOOM ARRANGE VIEW
-========================= */
+
 .zoom-view {
   position: absolute; inset: 0;
   background: rgba(3, 14, 24, 0.92);
@@ -615,9 +613,6 @@ button:disabled {
   .tmr-card { width: 40px; height: 58px; margin-left: -14px; }
 }
 
-/* =========================
-   DESIGN TOKENS + BUTTON SYSTEM
-========================= */
 :root {
   --gold: #ffd54f;
   --gold-2: #ff9800;
