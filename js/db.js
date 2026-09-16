@@ -411,11 +411,12 @@ async function updatePlayerField(roomId, uid, field, value) {
   });
 }
 
-export async function submitArrangement(roomId, uid, arrangement) {
+export async function submitArrangement(roomId, uid, arrangement, isFouled = false) {
   await setDoc(
     handRef(roomId, uid),
     {
       arrangement,
+      fouled: isFouled,
       submitted: true,
       updatedAt: Date.now()
     },
@@ -516,6 +517,7 @@ export async function startRound(roomId, user) {
       isBot: Boolean(player.isBot),
       hand,
       arrangement: null,
+      fouled: false,
       submitted: false,
       roundNumber,
       updatedAt: Date.now()
@@ -527,7 +529,7 @@ export async function startRound(roomId, user) {
         player.botLevel || room.settings.botLevel || "normal"
       );
 
-      await submitArrangement(roomId, player.uid, arrangement);
+      await submitArrangement(roomId, player.uid, arrangement, false);
     }
   }
 }
