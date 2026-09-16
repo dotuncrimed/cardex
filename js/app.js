@@ -57,7 +57,16 @@ const state = {
   autoSubmitting: false,
   selectedCard: null,
   selectedPos: null,
-  lastStatus: null
+  lastStatus: null,
+  revealTimers: [],
+  revealActive: false,
+  revealPlayedFor: null,
+  dealAnimPlayedFor: null,
+  showFullResults: false,
+  zoomOpen: false,
+  cashMap: {},
+  cashListeners: {},
+  coinsFlyedFor: null,
 };
 
 function $(selector) {
@@ -67,6 +76,112 @@ function $(selector) {
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+function formatCash(n) {
+  n = Number(n) || 0;
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
+  return String(n);
+}
+
+function syncCashListeners() {
+  if (!state.room) return;
+
+  const minBet = Number(state.room.settings.minBet) || 0;
+  const needed = {};
+
+  state.room.players.forEach((p) => {
+    if (p.isBot) {
+      state.cashMap[p.uid] = minBet * 10;
+    } else {
+      needed[p.username] = true;
+    }
+  });
+
+  if (state.user) needed[state.user.username] = true;
+
+  Object.keys(needed).forEach((un) => {
+    if (!state.cashListeners[un]) {
+      state.cashListeners[un] = listenUser(un, (data) => {
+        state.cashMap[un] = data ? Number(data.cash) || 0 : 0;
+        renderSeats();
+      });
+    }
+  });
+
+  Object.keys(state.cashListeners).forEach((un) => {
+    if (!needed[un]) {
+      state.cashListeners[un]();
+      delete state.cashListeners[un];
+    }
+  });
+}
+
+function renderTableMyRows() {
+  const wrap = document.getElementById("table-my-rows");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+
+  ["front", "middle", "back"].forEach((row) => {
+    const line = document.createElement("div");
+    line.className = "tmr-row";
+
+    const tag = document.createElement("span");
+    tag.className = "tmr-tag";
+    tag.textContent = row.toUpperCase();
+
+    const cards = document.createElement("div");
+    cards.className = "tmr-cards";
+
+    (state.arrangement[row] || []).forEach((c) => {
+      const el = makeCardElement(c, false);
+      el.classList.add("tmr-card");
+      cards.appendChild(el);
+    });
+
+    line.appendChild(tag);
+    line.appendChild(cards);
+    wrap.appendChild(line);
+  });
+}
+
+function flyCoinsToWinner(winnerUid) {
+  if (!state.room) return;
+  const layer = document.querySelector(".pg-table");
+  const winner = state.room.players.find((p) => p.uid === winnerUid);
+  if (!layer || !winner) return;
+
+  const myPlayer = currentUserPlayerObject();
+  const mySeat = myPlayer ? myPlayer.seat : 0;
+  const pos = SEAT_POS[seatOffset(winner.seat, mySeat)];
+  const target = document.querySelector("#seat-" + pos);
+  if (!target) return;
+
+  const lR = layer.getBoundingClientRect();
+  const sR = layer.getBoundingClientRect();
+  const tR = target.getBoundingClientRect();
+
+  const sx = sR.width / 2;
+  const sy = sR.height / 2;
+
+  for (let i = 0; i < 14; i++) {
+    const c = document.createElement("div");
+    c.className = "fly-coin";
+    c.style.left = sx + "px";
+    c.style.top = sy + "px";
+
+    const tx = tR.left - lR.left + tR.width / 2 + (Math.random() * 40 - 20);
+    const ty = tR.top - lR.top + tR.height / 2 + (Math.random() * 30 - 15);
+
+    c.style.setProperty("--tx", (tx - sx) + "px");
+    c.style.setProperty("--ty", (ty - sy) + "px");
+    c.style.animationDelay = (i * 60) + "ms";
+
+    layer.appendChild(c);
+    setTimeout(() => c.remove(), 1800 + i * 60);
+  }
+}
+
+
 
 function showScreen(name) {
   const screens = [
@@ -134,11 +249,22 @@ function clearRoomListeners() {
 function clearRoomState() {
   clearRoomListeners();
 
+  // Cleanup cash listeners
+  Object.values(state.cashListeners || {}).forEach((un) => un && un());
+  state.cashListeners = {};
+  state.cashMap = {};
+
   state.room = null;
   state.handData = null;
   state.arrangement = emptyArrangement();
   state.selectedCards.clear();
   state.roundInitialized = null;
+  state.zoomOpen = false;
+  state.revealActive = false;
+  state.showFullResults = false;
+
+  // Clear any pending timers
+  clearRevealTimers();
 
   localStorage.removeItem("currentRoomId");
   state.roomId = null;
@@ -170,6 +296,12 @@ function renderMenu() {
 
   $("#menu-username").textContent = state.userData?.displayName || state.user.username;
   $("#menu-cash").textContent = state.userData?.cash ?? 0;
+
+  const avatarEl = $("#menu-avatar");
+  if (avatarEl) {
+    const name = state.userData?.displayName || state.user.username || "?";
+    avatarEl.textContent = name.charAt(0).toUpperCase();
+  }
 }
 
 function makeCardElement(card, selected = false) {
@@ -278,6 +410,8 @@ function renderOpponentClusters() {
       for (let i = 0; i < n; i++) {
         const b = document.createElement("div");
         b.className = "card-back";
+        b.classList.add("deal-in");
+        b.style.animationDelay = (i * 60) + "ms";
         b.style.transform = `rotate(${((i - (n - 1) / 2) * 6).toFixed(1)}deg)`;
         fan.appendChild(b);
       }
@@ -403,7 +537,7 @@ function renderLobbySection() {
 
   const status = state.room.status;
 
-  if (status === "lobby" || status === "round_end") {
+  if (status === "lobby") {
     lobbySection.classList.remove("hidden");
   }
 
@@ -417,7 +551,7 @@ function renderLobbySection() {
     }
   }
 
-  if (status === "round_end") {
+  if (status === "round_end" && state.showFullResults) {
     resultsSection.classList.remove("hidden");
     renderResultsSection();
   }
@@ -494,6 +628,25 @@ function onMyCardTap(row, index) {
   renderMyRows();
 }
 
+function autoPlaceFromHand() {
+  if (!state.handData || !state.handData.hand || state.handData.hand.length !== 13) {
+    return false;
+  }
+
+  const h = state.handData.hand;
+
+  state.arrangement = {
+    front: h.slice(0, 3),
+    middle: h.slice(3, 8),
+    back: h.slice(8, 13)
+  };
+
+  state.selectedCard = null;
+  state.selectedPos = null;
+
+  return true;
+}
+
 function renderMyRows() {
   ["front", "middle", "back"].forEach((row) => {
     const container = $("#row-" + row);
@@ -506,6 +659,10 @@ function renderMyRows() {
 
     cards.forEach((card, index) => {
       const el = makeCardElement(card, state.selectedCard === card);
+      if (state.room && state.dealAnimPlayedFor !== state.room.roundNumber) {
+        el.classList.add("deal-in");
+        el.style.animationDelay = (index * 70) + "ms";
+      }
       el.style.setProperty("--rot", `${((index - mid) * 4).toFixed(1)}deg`);
       el.addEventListener("click", () => onMyCardTap(row, index));
       container.appendChild(el);
@@ -521,27 +678,214 @@ function renderMyRows() {
         `<span class="hand-name">${info.name}</span>`;
     }
   });
+
+  if (state.room) {
+    state.dealAnimPlayedFor = state.room.roundNumber;
+  }
+}
+
+function clearRevealTimers() {
+  (state.revealTimers || []).forEach(clearTimeout);
+  state.revealTimers = [];
+}
+
+function rowScoreFor(results, uid, rowKey) {
+  const list = results.details[uid] || [];
+  return list.reduce((sum, d) => sum + (d.rows[rowKey] || 0), 0);
+}
+
+function rowNameFor(arrangement, row) {
+  if (!arrangement) return "-";
+  if (row === "front") return evaluate3(arrangement.front).name;
+  return evaluate5(arrangement[row]).name;
+}
+
+function renderRevealSlot(pos, player, arrangement, row, rowScore, cumulative) {
+  const slot = document.getElementById("reveal-" + pos);
+  if (!slot) return;
+
+  slot.innerHTML = "";
+
+  const banner = document.createElement("div");
+  banner.className = "reveal-banner";
+  banner.innerHTML =
+    `<span class="rb-name">${rowNameFor(arrangement, row)}</span>` +
+    `<span class="rb-pts ${rowScore >= 0 ? "pos" : "neg"}">` +
+    `${rowScore >= 0 ? "+" : ""}${rowScore}</span>`;
+
+  const cards = document.createElement("div");
+  cards.className = "reveal-cards";
+
+  ((arrangement && arrangement[row]) || []).forEach((c, i) => {
+    const el = makeCardElement(c, false);
+    el.classList.add("reveal-card");
+    el.style.animationDelay = (i * 80) + "ms";
+    cards.appendChild(el);
+  });
+
+  const total = document.createElement("div");
+  total.className = "reveal-total";
+  total.innerHTML = `Total <b>${cumulative >= 0 ? "+" : ""}${cumulative}</b>`;
+
+  slot.appendChild(banner);
+  slot.appendChild(cards);
+  slot.appendChild(total);
+}
+
+function updateScorePanel(results, myUid, revealedRows) {
+  let total = 0;
+
+  [["front", "sp-front"], ["middle", "sp-mid"], ["back", "sp-back"]]
+    .forEach(([key, id]) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (revealedRows.includes(key)) {
+        const v = rowScoreFor(results, myUid, key);
+        total += v;
+        el.textContent = (v >= 0 ? "+" : "") + v;
+      } else {
+        el.textContent = "";
+      }
+    });
+
+  const tEl = document.getElementById("sp-total");
+  if (tEl) {
+    tEl.textContent = revealedRows.length
+      ? ((total >= 0 ? "+" : "") + total)
+      : "";
+  }
+}
+
+function finalizeReveal() {
+  state.revealActive = false;
+  state.revealPlayedFor = state.room ? state.room.roundNumber : null;
+
+  const skip = document.getElementById("reveal-skip");
+  if (skip) skip.classList.add("hidden");
+
+  const readyArea = document.getElementById("ready-area");
+  if (readyArea) readyArea.classList.remove("hidden");
+
+  renderReadyArea();
+}
+
+function skipReveal() {
+  if (!state.room || !state.room.results) return;
+
+  clearRevealTimers();
+
+  const results = state.room.results;
+  const myPlayer = currentUserPlayerObject();
+  const mySeat = myPlayer ? myPlayer.seat : 0;
+
+  state.room.players.forEach((pl) => {
+    const full = ["front", "middle", "back"]
+      .reduce((s, k) => s + rowScoreFor(results, pl.uid, k), 0);
+    const pos = SEAT_POS[seatOffset(pl.seat, mySeat)];
+    const arr = results.arrangements ? results.arrangements[pl.uid] : null;
+    renderRevealSlot(pos, pl, arr, "back", rowScoreFor(results, pl.uid, "back"), full);
+  });
+
+  updateScorePanel(results, state.user.uid, ["front", "middle", "back"]);
+  finalizeReveal();
+}
+
+function playRevealSequence(results) {
+  clearRevealTimers();
+  state.revealActive = true;
+
+  const layer = document.getElementById("reveal-layer");
+  if (!layer) return;
+  layer.classList.remove("hidden");
+
+  const skip = document.getElementById("reveal-skip");
+  if (skip) skip.classList.remove("hidden");
+
+  const resultsSection = document.getElementById("results-section");
+  if (resultsSection) resultsSection.classList.add("hidden");
+
+  const readyArea = document.getElementById("ready-area");
+  if (readyArea) readyArea.classList.add("hidden");
+
+  ["top", "left", "right", "bottom"].forEach((p) => {
+    const el = document.getElementById("reveal-" + p);
+    if (el) el.innerHTML = "";
+  });
+
+  updateScorePanel(results, state.user.uid, []);
+
+  const myPlayer = currentUserPlayerObject();
+  const mySeat = myPlayer ? myPlayer.seat : 0;
+
+  const seats = state.room.players.map((pl) => ({
+    pl,
+    pos: SEAT_POS[seatOffset(pl.seat, mySeat)]
+  }));
+
+  const rows = ["front", "middle", "back"];
+  const cum = {};
+  seats.forEach((s) => { cum[s.pl.uid] = 0; });
+
+  let t = 500;
+
+  rows.forEach((row, ri) => {
+    state.revealTimers.push(setTimeout(() => {
+      seats.forEach((s, si) => {
+        state.revealTimers.push(setTimeout(() => {
+          const arr = results.arrangements
+            ? results.arrangements[s.pl.uid]
+            : null;
+          const rs = rowScoreFor(results, s.pl.uid, row);
+          cum[s.pl.uid] += rs;
+          renderRevealSlot(s.pos, s.pl, arr, row, rs, cum[s.pl.uid]);
+
+          if (s.pl.uid === state.user.uid) {
+            updateScorePanel(results, state.user.uid, rows.slice(0, ri + 1));
+          }
+        }, si * 250));
+      });
+    }, t));
+
+    t += 2100;
+  });
+
+  state.revealTimers.push(setTimeout(() => {
+    finalizeReveal();
+  }, t + 400));
 }
 
 function renderArrangeSection() {
-  const arrangeStatus = $("#arrange-status");
+  const autoBtn = $("#auto-arrange-button");
+  if (autoBtn) autoBtn.classList.toggle("hidden", !state.room.settings.autoArrange);
+
+  const zoom = document.getElementById("zoom-view");
+  const tableSec = document.getElementById("arrange-section");
+  if (!zoom || !tableSec) return;
+
+  const st = $("#arrange-status");
 
   if (!state.handData) {
-    arrangeStatus.textContent = "Waiting for cards...";
+    if (st) st.textContent = "Waiting for cards...";
+    zoom.classList.add("hidden");
+    tableSec.classList.remove("hidden");
     return;
   }
 
   if (state.handData.submitted) {
-    arrangeStatus.textContent = "Waiting for other players...";
+    zoom.classList.add("hidden");
+    tableSec.classList.remove("hidden");
+    if (st) st.textContent = "Submitted. Waiting for other players...";
     disableArrangeControls(true);
-    renderMyRows();
+    renderTableMyRows();
     return;
   }
 
   if (state.room.settings.autoArrange) {
-    arrangeStatus.textContent = "Auto-arranging your cards...";
+    zoom.classList.add("hidden");
+    tableSec.classList.remove("hidden");
+    if (st) st.textContent = "Auto-arranging your cards...";
     disableArrangeControls(true);
-
+    renderTableMyRows();
     setTimeout(async () => {
       const arrangement = botArrangeHand(state.handData.hand, "hard");
       try {
@@ -552,14 +896,27 @@ function renderArrangeSection() {
         setRoomMessage("Auto-arrange failed.");
       }
     }, 600);
-
     return;
   }
 
-  arrangeStatus.textContent = "Tap two cards to switch them.";
-  disableArrangeControls(false);
-  renderMyRows();
+  if (state.zoomOpen) {
+    tableSec.classList.add("hidden");
+    zoom.classList.remove("hidden");
+    const total =
+      state.arrangement.front.length +
+      state.arrangement.middle.length +
+      state.arrangement.back.length;
+    if (total === 0) autoPlaceFromHand();
+    renderMyRows();
+  } else {
+    zoom.classList.add("hidden");
+    tableSec.classList.remove("hidden");
+    if (st) st.textContent = "Cards arranged. Submit or re-arrange.";
+    disableArrangeControls(false);
+    renderTableMyRows();
+  }
 }
+
 
 function disableArrangeControls(disabled) {
   $("#assign-front-button").disabled = disabled;
@@ -925,14 +1282,64 @@ function renderRoom() {
   if (state.room.roundNumber !== state.roundInitialized) {
     state.arrangement = emptyArrangement();
     state.selectedCards.clear();
+    state.selectedCard = null;
+    state.selectedPos = null;
     state.roundInitialized = state.room.roundNumber;
+    state.revealPlayedFor = null;
+    state.dealAnimPlayedFor = null;
+    state.showFullResults = false;
+  }
+
+  if (state.lastStatus && state.lastStatus !== state.room.status) {
+    if (state.lastStatus === "arranging" && state.room.status === "scoring") {
+      showBanner("Start Comparing", 1600);
+    }
+    if (
+      state.room.status === "arranging" &&
+      ["lobby", "round_end"].includes(state.lastStatus)
+    ) {
+      showBanner("Start", 1200);
+    }
+    if (state.room.status !== "round_end") {
+      clearRevealTimers();
+      state.revealActive = false;
+      const layer = document.getElementById("reveal-layer");
+      if (layer) layer.classList.add("hidden");
+      const readyArea = document.getElementById("ready-area");
+      if (readyArea) readyArea.classList.add("hidden");
+    }
+  }
+  state.lastStatus = state.room.status;
+
+  const tableEl = document.querySelector(".pg-table");
+  if (tableEl) {
+    tableEl.classList.toggle(
+      "arranging",
+      ["arranging", "scoring"].includes(state.room.status)
+    );
   }
 
   renderRoomInfo();
   renderSeats();
-  selectRow(state.targetRow || "front");
+  renderOpponentClusters();
   renderLobbySection();
   manageHandListener();
+
+  if (state.room.status === "round_end") {
+    if (
+      state.room.results &&
+      state.revealPlayedFor !== state.room.roundNumber &&
+      !state.revealActive
+    ) {
+      playRevealSequence(state.room.results);
+    } else {
+      renderReadyArea();
+      const readyArea = document.getElementById("ready-area");
+      if (readyArea && state.revealPlayedFor === state.room.roundNumber) {
+        readyArea.classList.remove("hidden");
+      }
+    }
+  }
 }
 
 function manageHandListener() {
@@ -945,6 +1352,26 @@ function manageHandListener() {
   if (shouldListen && !state.unsubHand) {
     state.unsubHand = listenOwnHand(state.roomId, state.user.uid, (snapshot) => {
       state.handData = snapshot.exists() ? snapshot.data() : null;
+
+      if (
+        state.handData &&
+        !state.handData.submitted &&
+        state.handData.hand &&
+        state.handData.hand.length === 13
+      ) {
+        const total =
+          state.arrangement.front.length +
+          state.arrangement.middle.length +
+          state.arrangement.back.length;
+
+        if (total === 0) {
+          autoPlaceFromHand();
+        }
+
+        if (!state.room.settings.autoArrange) {
+          state.zoomOpen = true;
+        }
+      }
 
       if (state.room && state.room.status === "arranging") {
         renderArrangeSection();
@@ -964,60 +1391,74 @@ async function hostController() {
   if (state.room.hostId !== state.user.uid) return;
   if (state.hostBusy) return;
 
+  const now = Date.now();
+  if (now < (state.hostCooldownUntil || 0)) return;
+
   const room = state.room;
+  const humans = room.players.filter((p) => !p.isBot);
+
+  const fail = () => {
+    state.hostFailCount = (state.hostFailCount || 0) + 1;
+    if (state.hostFailCount >= 3) {
+      state.hostCooldownUntil = Date.now() + 10000;
+      state.hostFailCount = 0;
+      console.warn("hostController backing off 10s");
+    }
+  };
+
+  const succeed = () => {
+    state.hostFailCount = 0;
+  };
 
   if (room.status === "arranging") {
-    const allSubmitted = room.players.every((player) => player.submitted);
-
+    const allSubmitted = room.players.every((p) => p.submitted);
     if (allSubmitted) {
       state.hostBusy = true;
-
       try {
         await finishRound(room.roomCode, state.user);
+        succeed();
       } catch (error) {
         console.error(error);
-        setRoomMessage("Failed to finish round.");
+        fail();
       } finally {
         state.hostBusy = false;
       }
     }
-
     return;
   }
 
   if (room.status === "round_end") {
-    const humans = room.players.filter((player) => !player.isBot);
-    const readyHumans = humans.filter((player) => player.ready);
+    if (humans.length === 0) return; // never auto-run a bot-only table
 
-    if (humans.length > 0 && readyHumans.length === humans.length) {
+    const readyHumans = humans.filter((p) => p.ready);
+
+    if (readyHumans.length === humans.length) {
       state.hostBusy = true;
-
       try {
         await sleep(800);
         await startRound(room.roomCode, state.user);
+        succeed();
       } catch (error) {
         console.error(error);
         setRoomMessage(error.message || "Failed to start next round.");
+        fail();
       } finally {
         state.hostBusy = false;
       }
-
       return;
     }
 
-    if (room.phaseEndsAt && Date.now() > room.phaseEndsAt) {
-      if (readyHumans.length > 0) {
-        state.hostBusy = true;
-
-        try {
-          await replaceUnreadyWithBots(room.roomCode);
-          await startRound(room.roomCode, state.user);
-        } catch (error) {
-          console.error(error);
-          setRoomMessage(error.message || "Failed to start after timer.");
-        } finally {
-          state.hostBusy = false;
-        }
+    if (room.phaseEndsAt && Date.now() > room.phaseEndsAt && readyHumans.length > 0) {
+      state.hostBusy = true;
+      try {
+        await replaceUnreadyWithBots(room.roomCode);
+        await startRound(room.roomCode, state.user);
+        succeed();
+      } catch (error) {
+        console.error(error);
+        fail();
+      } finally {
+        state.hostBusy = false;
       }
     }
   }
@@ -1089,12 +1530,30 @@ setInterval(() => {
   renderRoomInfo();
 
   const timerEl = $("#pg-timer");
+  const zoomTimerEl = $("#zoom-timer");
 
-  if (timerEl && state.room.phaseEndsAt) {
-    const seconds = Math.max(0, Math.ceil((state.room.phaseEndsAt - Date.now()) / 1000));
-    timerEl.textContent = seconds;
-  } else if (timerEl) {
-    timerEl.textContent = "--";
+  const arranging = state.room.status === "arranging";
+  const readyPhase = state.room.status === "round_end" && state.revealPlayedFor === state.room.roundNumber;
+
+  const showTableTimer = (arranging || readyPhase) && state.room.phaseEndsAt;
+  const showZoomTimer = arranging && state.room.phaseEndsAt && state.zoomOpen;
+
+  if (timerEl) {
+    timerEl.classList.toggle("hidden", !showTableTimer);
+    if (showTableTimer) {
+      const seconds = Math.max(0, Math.ceil((state.room.phaseEndsAt - Date.now()) / 1000));
+      timerEl.textContent = seconds;
+    } else {
+      timerEl.textContent = "--";
+    }
+  }
+
+  if (zoomTimerEl) {
+    zoomTimerEl.classList.toggle("hidden", !showZoomTimer);
+    if (showZoomTimer) {
+      const seconds = Math.max(0, Math.ceil((state.room.phaseEndsAt - Date.now()) / 1000));
+      zoomTimerEl.textContent = seconds;
+    }
   }
 
   autoSubmitIfNeeded();
@@ -1195,13 +1654,27 @@ $("#join-room-button").addEventListener("click", async () => {
   }
 });
 
-$("#leave-room-button").addEventListener("click", async () => {
+async function exitToMenu() {
   try {
-    await leaveRoom(state.user, state.roomId);
-    clearRoomState();
-    showScreen("menu");
+    if (state.roomId && state.user) {
+      await leaveRoom(state.user, state.roomId);
+    }
   } catch (error) {
-    setRoomMessage(error.message || "Cannot leave room.");
+    console.warn("leaveRoom failed, escaping locally:", error);
+  }
+  clearRoomState();
+  showScreen("menu");
+}
+
+$("#leave-room-button").addEventListener("click", exitToMenu);
+$("#exit-room-button").addEventListener("click", exitToMenu);
+
+$("#join-game-button").addEventListener("click", async () => {
+  try {
+    await takeSeat(state.user, state.roomId, state.userData?.displayName || state.user.username);
+    setRoomMessage("Joined the game!");
+  } catch (error) {
+    setRoomMessage(error.message || "Cannot join game.");
   }
 });
 
@@ -1242,8 +1715,7 @@ $("#auto-arrange-button").addEventListener("click", () => {
 });
 
 $("#clear-arrangement-button").addEventListener("click", () => {
-  state.arrangement = emptyArrangement();
-  state.selectedCards.clear();
+  autoPlaceFromHand();
   renderArrangeSection();
 });
 
@@ -1443,4 +1915,58 @@ document.addEventListener("click", (event) => {
   if (tab) {
     selectRow(tab.dataset.row);
   }
+
+  if (event.target.closest("#reveal-skip")) {
+    skipReveal();
+  }
+
+  if (event.target.closest("#view-results-button")) {
+    state.showFullResults = !state.showFullResults;
+    renderLobbySection();
+  }
+
+  if (event.target.closest("#close-results-button")) {
+    state.showFullResults = false;
+    renderLobbySection();
+  }
 });
+
+// Zoom arrange listeners
+const openZoomBtn = document.getElementById("open-zoom-button");
+if (openZoomBtn) {
+  openZoomBtn.addEventListener("click", () => {
+    state.zoomOpen = true;
+    renderArrangeSection();
+  });
+}
+
+const readyArrangeBtn = document.getElementById("ready-arrange-button");
+if (readyArrangeBtn) {
+  readyArrangeBtn.addEventListener("click", () => {
+    const a = state.arrangement;
+    if (a.front.length !== 3 || a.middle.length !== 5 || a.back.length !== 5) {
+      setRoomMessage("You need Front 3, Middle 5, Back 5.");
+      return;
+    }
+    if (!isLegalArrangement(a)) {
+      setRoomMessage("Illegal arrangement. Back must beat Middle, Middle must beat Front.");
+      return;
+    }
+    state.zoomOpen = false;
+    renderArrangeSection();
+  });
+}
+
+const swapMidBackBtn = document.getElementById("swap-mid-back-button");
+if (swapMidBackBtn && !swapMidBackBtn.dataset.bound) {
+  swapMidBackBtn.dataset.bound = "true";
+  swapMidBackBtn.addEventListener("click", () => {
+    const tempMid = [...state.arrangement.middle];
+    const tempBack = [...state.arrangement.back];
+    state.arrangement.middle = tempBack;
+    state.arrangement.back = tempMid;
+    if (typeof renderMyRows === "function") {
+      renderMyRows();
+    }
+  });
+}

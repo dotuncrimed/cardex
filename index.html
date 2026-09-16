@@ -11,101 +11,120 @@
 
     <!-- LOGIN -->
     <section id="login-screen" class="screen hidden">
-      <div class="panel">
-        <h1>Chinese Poker</h1>
-        <p class="subtitle">Login with username and PIN.</p>
-
-        <div class="form-group">
-          <label>Username</label>
-          <input id="login-username" type="text" maxlength="20" autocomplete="off" />
+      <div class="fp-wrap">
+        <div class="fp-backdrop" aria-hidden="true">
+          <div class="draft-card dc-1">♠</div>
+          <div class="draft-card dc-2">♥</div>
+          <div class="draft-card dc-3">♦</div>
+          <div class="draft-card dc-4">♣</div>
+          <div class="draft-card dc-5">♠</div>
+          <div class="draft-card dc-6">♥</div>
         </div>
 
-        <div class="form-group">
-          <label>PIN</label>
-          <input id="login-pin" type="password" maxlength="30" />
-        </div>
+        <div class="fp-panel">
+          <div class="fp-logo">
+            <div class="fp-logo-cards">
+              <span class="mini mini-1">♠</span>
+              <span class="mini mini-2">♥</span>
+              <span class="mini mini-3">♦</span>
+            </div>
+            <h1 class="fp-title">CARDEX</h1>
+            <p class="fp-tagline">PUSOY • CHINESE POKER • LIVE TABLES</p>
+          </div>
 
-        <button id="login-button" class="primary-button">Login / Register</button>
-        <p id="login-error" class="error"></p>
+          <div class="form-group">
+            <label>Username</label>
+            <input id="login-username" type="text" maxlength="20" autocomplete="off" placeholder="Enter username" />
+          </div>
+
+          <div class="form-group">
+            <label>PIN</label>
+            <input id="login-pin" type="password" maxlength="30" placeholder="Minimum 6 characters" />
+          </div>
+
+          <button id="login-button" class="btn btn-primary btn-block">Login / Register</button>
+          <p id="login-error" class="error"></p>
+
+          <p class="fp-foot">v1.0 • Private tables • Play responsibly</p>
+        </div>
       </div>
     </section>
 
     <!-- MENU -->
     <section id="menu-screen" class="screen hidden">
-      <div class="panel">
-        <h1>Chinese Poker</h1>
-        <p>Welcome, <strong id="menu-username"></strong></p>
-        <p>Cash: <strong id="menu-cash">0</strong></p>
-
-        <button id="show-create-room-button" class="primary-button">Create Room</button>
-        <button id="show-join-room-button" class="primary-button">Join Room</button>
-        <button id="admin-button" class="secondary-button">Admin</button>
-        <button id="logout-button" class="secondary-button">Logout</button>
-
-        <div id="create-room-form" class="hidden panel-sub">
-          <h3>Create Room</h3>
-
-          <div class="form-group">
-            <label>Minimum Bet</label>
-            <input id="create-min-bet" type="number" min="0" value="100" />
-          </div>
-
-          <div class="form-group">
-            <label>Arrange Timer Seconds</label>
-            <input id="create-arrange-timer" type="number" min="0" value="120" />
-          </div>
-
-          <div class="form-group">
-            <label>Ready Timer Seconds</label>
-            <input id="create-ready-timer" type="number" min="0" value="30" />
-          </div>
-
-          <div class="form-group">
-            <label>Bot Level</label>
-            <select id="create-bot-level">
-              <option value="easy">Easy</option>
-              <option value="normal" selected>Normal</option>
-              <option value="hard">Hard</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label>
-              <input id="create-auto-fill-bots" type="checkbox" checked />
-              Auto-fill empty seats with bots
-            </label>
-          </div>
-
-          <div class="form-group">
-            <label>
-              <input id="create-scoop-bonus" type="checkbox" checked />
-              Scoop Bonus +3
-            </label>
-          </div>
-
-          <div class="form-group">
-            <label>
-              <input id="create-auto-arrange" type="checkbox" />
-              Auto-arrange cards (skip manual arrangement)
-            </label>
-          </div>
-
-          <button id="create-room-button" class="primary-button">Create</button>
-          <button id="cancel-create-room-button" class="secondary-button">Cancel</button>
-          <p id="create-room-error" class="error"></p>
+      <div class="fp-wrap">
+        <div class="fp-backdrop" aria-hidden="true">
+          <div class="draft-card dc-1">♠</div>
+          <div class="draft-card dc-2">♥</div>
+          <div class="draft-card dc-3">♦</div>
+          <div class="draft-card dc-4">♣</div>
+          <div class="draft-card dc-5">♠</div>
+          <div class="draft-card dc-6">♥</div>
         </div>
 
-        <div id="join-room-form" class="hidden panel-sub">
-          <h3>Join Room</h3>
-
-          <div class="form-group">
-            <label>Room Code</label>
-            <input id="join-room-code" type="text" maxlength="5" autocomplete="off" />
+        <div class="fp-panel">
+          <div class="fp-menu-head">
+            <div class="fp-avatar" id="menu-avatar">?</div>
+            <div>
+              <div id="menu-username" class="fp-name">Player</div>
+              <div class="fp-cash-chip">$ <span id="menu-cash">0</span></div>
+            </div>
           </div>
 
-          <button id="join-room-button" class="primary-button">Join</button>
-          <button id="cancel-join-room-button" class="secondary-button">Cancel</button>
-          <p id="join-room-error" class="error"></p>
+          <div class="fp-menu-grid">
+            <button id="show-create-room-button" class="btn btn-primary">Create Room</button>
+            <button id="show-join-room-button" class="btn btn-secondary">Join Room</button>
+          </div>
+
+          <div id="create-room-form" class="hidden fp-subpanel">
+            <h3>Create Room</h3>
+            <div class="form-group">
+              <label>Minimum Bet</label>
+              <input id="create-min-bet" type="number" min="0" value="100" />
+            </div>
+            <div class="form-group">
+              <label>Arrange Timer (sec)</label>
+              <input id="create-arrange-timer" type="number" min="0" value="120" />
+            </div>
+            <div class="form-group">
+              <label>Ready Timer (sec)</label>
+              <input id="create-ready-timer" type="number" min="0" value="30" />
+            </div>
+            <div class="form-group">
+              <label>Bot Level</label>
+              <select id="create-bot-level">
+                <option value="easy">Easy</option>
+                <option value="normal" selected>Normal</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+            <label class="fp-check"><input id="create-auto-fill-bots" type="checkbox" checked /> Auto-fill empty seats with bots</label>
+            <label class="fp-check"><input id="create-scoop-bonus" type="checkbox" checked /> Scoop bonus (+3)</label>
+            <label class="fp-check"><input id="create-auto-arrange" type="checkbox" /> Auto-arrange cards</label>
+            <div class="pg-actions">
+              <button id="create-room-button" class="btn btn-primary">Create Room</button>
+              <button id="cancel-create-room-button" class="btn btn-ghost">Cancel</button>
+            </div>
+            <p id="create-room-error" class="error"></p>
+          </div>
+
+          <div id="join-room-form" class="hidden fp-subpanel">
+            <h3>Join Room</h3>
+            <div class="form-group">
+              <label>Room Code</label>
+              <input id="join-room-code" type="text" maxlength="5" autocomplete="off" placeholder="e.g. K7P2Q" />
+            </div>
+            <div class="pg-actions">
+              <button id="join-room-button" class="btn btn-primary">Join Room</button>
+              <button id="cancel-join-room-button" class="btn btn-ghost">Cancel</button>
+            </div>
+            <p id="join-room-error" class="error"></p>
+          </div>
+
+          <div class="fp-menu-foot">
+            <button id="admin-button" class="btn btn-ghost">Admin</button>
+            <button id="logout-button" class="btn btn-ghost">Logout</button>
+          </div>
         </div>
       </div>
     </section>
@@ -179,11 +198,24 @@
           </div>
         </div>
 
-        <!-- ARRANGE (your 3 rows on the table) -->
+        <!-- ARRANGE (table view) -->
         <div id="arrange-section" class="hidden">
           <div id="arrange-status" class="pg-message"></div>
+          <div class="table-my-rows" id="table-my-rows"></div>
+          <div class="arrange-controls">
+            <button id="open-zoom-button" class="pg-btn">Arrange</button>
+            <button id="submit-arrangement-button" class="ready-btn">Submit</button>
+          </div>
+        </div>
 
-          <div class="my-rows">
+        <!-- ZOOM ARRANGE VIEW -->
+        <div id="zoom-view" class="zoom-view hidden">
+          <div class="zoom-head">
+            <div class="pg-timer hidden" id="zoom-timer">--</div>
+            <div>Arrange Your Cards</div>
+          </div>
+
+          <div class="my-rows zoom-rows">
             <div class="my-row">
               <div class="row-label" id="label-front"></div>
               <div class="row-cards" id="row-front"></div>
@@ -198,28 +230,51 @@
             </div>
           </div>
 
-          <div class="arrange-controls">
-            <button id="auto-arrange-button" class="pg-btn">Auto</button>
+          <div class="zoom-controls">
+            <button id="auto-arrange-button" class="pg-btn hidden">Auto</button>
+            <button id="swap-mid-back-button" class="pg-btn">Swap Mid/Back</button>
             <button id="clear-arrangement-button" class="pg-btn">Reset</button>
-            <button id="submit-arrangement-button" class="ready-btn">Ready</button>
+            <button id="ready-arrange-button" class="ready-btn">Ready</button>
+          </div>
+        </div>
+
+        <!-- REVEAL / COMPARE LAYER -->
+        <div id="reveal-layer" class="reveal-layer hidden">
+          <button id="reveal-skip" class="pg-btn hidden">Skip ▸▸</button>
+
+          <div class="reveal-slot reveal-top" id="reveal-top"></div>
+          <div class="reveal-slot reveal-left" id="reveal-left"></div>
+          <div class="reveal-slot reveal-right" id="reveal-right"></div>
+          <div class="reveal-slot reveal-bottom" id="reveal-bottom"></div>
+
+          <div class="score-panel" id="score-panel">
+            <div class="sp-row"><span>Front:</span><span id="sp-front"></span></div>
+            <div class="sp-row"><span>Mid:</span><span id="sp-mid"></span></div>
+            <div class="sp-row"><span>Back:</span><span id="sp-back"></span></div>
+            <div class="sp-row sp-total"><span>Total:</span><span id="sp-total"></span></div>
+          </div>
+
+          <div id="ready-area" class="ready-area hidden">
+            <div id="ready-list" class="pg-ready-list"></div>
+            <div class="pg-actions">
+              <button id="ready-button" class="ready-btn hidden">Ready for Next Round</button>
+              <button id="force-start-button" class="pg-btn hidden">Force Start</button>
+              <button id="join-game-button" class="pg-btn">Join Game</button>
+              <button id="view-results-button" class="pg-btn">View Full Results</button>
+              <button id="exit-room-button" class="pg-btn">Exit Room</button>
+            </div>
           </div>
         </div>
 
         <!-- RESULTS -->
         <div id="results-section" class="pg-panel hidden">
+          <button id="close-results-button" class="close-panel-btn" title="Close">✕</button>
           <div id="result-summary" class="pg-result-summary"></div>
           <div id="result-boards" class="pg-boards"></div>
 
           <div class="hidden">
             <table id="result-table"></table>
             <div id="result-details"></div>
-          </div>
-
-          <div id="ready-list" class="pg-ready-list"></div>
-
-          <div class="pg-actions">
-            <button id="ready-button" class="ready-btn hidden">Ready for Next Round</button>
-            <button id="force-start-button" class="pg-btn hidden">Force Start</button>
           </div>
         </div>
 
