@@ -36,7 +36,8 @@ import {
   listenAllUsers,
   declareSpecial,
   listenAllRooms,
-  spectateRoom
+  spectateRoom,
+  sweepStaleRooms
 } from "./db.js";
 
 const state = {
@@ -370,6 +371,7 @@ function syncRoomsListener() {
     state.roomsUnsub = listenAllRooms((rooms) => {
       state.allRooms = rooms;
       renderRoomList();
+      sweepStaleRooms(rooms, state.user ? state.user.uid : null);
     });
   }
 
