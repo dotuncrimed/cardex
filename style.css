@@ -1209,3 +1209,9 @@ button:active { transform: scale(0.97); }
 .lobby-time { color: rgba(255, 255, 255, 0.55); }
 
 .lobby-actions { display: flex; gap: 8px; }
+
+.fp-lobby-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  margin-top: 6px;
+}

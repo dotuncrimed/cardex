@@ -779,3 +779,38 @@ export async function spectateRoom(user, code, displayName) {
   await updateDoc(roomRef(code), { spectators });
   return code;
 }
+
+const STALE_MS = 15 * 60 * 1000; // 15 minutes
+const sweptRoomIds = new Set();
+
+export async function sweepStaleRooms(rooms, excludeUid) {
+  const now = Date.now();
+
+  for (const room of rooms) {
+    const roomId = room.id || room.roomCode;
+    if (!roomId) continue;
+    if (sweptRoomIds.has(roomId)) continue;
+
+    const lastActivity = room.updatedAt || room.createdAt || 0;
+    if (now - lastActivity < STALE_MS) continue;
+
+    // don't sweep a room with a live timer (active arrange/ready phase)
+    if (room.phaseEndsAt && now < room.phaseEndsAt) continue;
+
+    // don't sweep rooms the current user is inside
+    if (excludeUid) {
+      const inPlayers = (room.players || []).some((p) => p.uid === excludeUid);
+      const inSpectators = (room.spectators || []).some((s) => s.uid === excludeUid);
+      if (inPlayers || inSpectators) continue;
+    }
+
+    sweptRoomIds.add(roomId);
+
+    try {
+      await deleteDoc(roomRef(roomId));
+      console.log("Swept stale room:", room.roomCode);
+    } catch (error) {
+      console.warn("Sweep failed for room:", room.roomCode, error);
+    }
+  }
+}
