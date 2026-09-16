@@ -1410,6 +1410,24 @@ async function hostController() {
     state.hostFailCount = 0;
   };
 
+  if (room.status === "scoring") {
+    const stuckFor = Date.now() - (room.updatedAt || 0);
+    if (stuckFor > 20000) {
+      console.warn("Scoring stuck for 20s, retrying finishRound");
+      state.hostBusy = true;
+      try {
+        await finishRound(room.roomCode, state.user);
+        succeed();
+      } catch (error) {
+        console.error(error);
+        fail();
+      } finally {
+        state.hostBusy = false;
+      }
+    }
+    return;
+  }
+
   if (room.status === "arranging") {
     const allSubmitted = room.players.every((p) => p.submitted);
     if (allSubmitted) {
