@@ -1026,25 +1026,28 @@ async function autoSubmitIfNeeded() {
   if (state.handData.submitted) return;
   if (!state.room.phaseEndsAt) return;
   if (Date.now() < state.room.phaseEndsAt) return;
+  if (Date.now() < (state.autoSubmitFailUntil || 0)) return;
 
   state.autoSubmitting = true;
 
   try {
-    let arrangement = state.arrangement;
+    const arrangement = state.arrangement;
 
-    const isValid =
+    const countsOk =
       arrangement.front.length === 3 &&
       arrangement.middle.length === 5 &&
-      arrangement.back.length === 5 &&
-      isLegalArrangement(arrangement);
+      arrangement.back.length === 5;
 
-    if (!isValid) {
-      arrangement = botArrangeHand(state.handData.hand, "hard");
+    if (countsOk) {
+      const fouled = !isLegalArrangement(arrangement);
+      await submitArrangement(state.roomId, state.user.uid, arrangement, fouled);
+    } else {
+      const fixed = botArrangeHand(state.handData.hand, "normal");
+      await submitArrangement(state.roomId, state.user.uid, fixed, false);
     }
-
-    await submitArrangement(state.roomId, state.user.uid, arrangement);
   } catch (error) {
     console.error(error);
+    state.autoSubmitFailUntil = Date.now() + 5000;
   } finally {
     state.autoSubmitting = false;
   }
@@ -2015,17 +2018,24 @@ if (openZoomBtn) {
 }
 
 const readyArrangeBtn = document.getElementById("ready-arrange-button");
-if (readyArrangeBtn) {
+if (readyArrangeBtn && !readyArrangeBtn.dataset.bound) {
+  readyArrangeBtn.dataset.bound = "true";
   readyArrangeBtn.addEventListener("click", () => {
     const a = state.arrangement;
-    if (a.front.length !== 3 || a.middle.length !== 5 || a.back.length !== 5) {
+
+    if (
+      a.front.length !== 3 ||
+      a.middle.length !== 5 ||
+      a.back.length !== 5
+    ) {
       setRoomMessage("You need Front 3, Middle 5, Back 5.");
       return;
     }
+
     if (!isLegalArrangement(a)) {
-      setRoomMessage("Illegal arrangement. Back must beat Middle, Middle must beat Front.");
-      return;
+      setRoomMessage("Warning: Fouled arrangement. Submitting it will auto-lose the round.");
     }
+
     state.zoomOpen = false;
     renderArrangeSection();
   });
