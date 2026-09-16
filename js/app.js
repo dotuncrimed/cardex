@@ -34,7 +34,9 @@ import {
   updateDisplayName,
   addAdminLog,
   listenAllUsers,
-  declareSpecial
+  declareSpecial,
+  listenAllRooms,
+  spectateRoom
 } from "./db.js";
 
 const state = {
@@ -73,6 +75,8 @@ const state = {
   adminUnsub: null,
   adminSearch: "",
   adminSelectedUsername: null,
+  allRooms: [],
+  roomsUnsub: null,
 };
 
 function $(selector) {
@@ -295,6 +299,86 @@ function emptyArrangement() {
   return { front: [], middle: [], back: [] };
 }
 
+function statusInfo(status) {
+  if (status === "lobby") return { label: "Waiting", cls: "st-waiting" };
+  if (status === "arranging" || status === "scoring") return { label: "Playing", cls: "st-playing" };
+  return { label: "Round End", cls: "st-roundend" };
+}
+
+function timeAgo(ts) {
+  const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return s + "s ago";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h ago";
+  return Math.floor(h / 24) + "d ago";
+}
+
+function renderRoomList() {
+  const list = $("#lobby-rooms-list");
+  if (!list) return;
+  list.innerHTML = "";
+
+  const countEl = $("#lobby-room-count");
+  if (countEl) countEl.textContent = state.allRooms.length + " live";
+
+  if (state.allRooms.length === 0) {
+    list.innerHTML = '<div class="lobby-empty">No live tables yet. Create one!</div>';
+    return;
+  }
+
+  state.allRooms.forEach((room) => {
+    const st = statusInfo(room.status);
+    const players = [...(room.players || [])].sort((a, b) => a.seat - b.seat);
+    const playing = room.status === "arranging" || room.status === "scoring";
+    const canJoin = ["lobby", "round_end"].includes(room.status) && players.length < 4;
+
+    const seatsHtml = [0, 1, 2, 3].map((seat) => {
+      const p = players.find((x) => x.seat === seat);
+      if (!p) return '<div class="lobby-seat empty">+</div>';
+      return `<div class="lobby-seat${p.isBot ? " bot" : ""}" title="${p.displayName}">${(p.displayName || "?").charAt(0).toUpperCase()}</div>`;
+    }).join("");
+
+    const card = document.createElement("div");
+    card.className = "lobby-room-card " + st.cls;
+    card.innerHTML = `
+      <div class="lobby-card-head">
+        <span class="lobby-code">${room.roomCode}</span>
+        <span class="lobby-status ${st.cls}">${playing ? '<span class="pulse-dot"></span>' : ""}${st.label}</span>
+      </div>
+      <div class="lobby-seats">${seatsHtml}</div>
+      <div class="lobby-meta">
+        <span>👥 ${players.length}/4</span>
+        <span>🔄 Round ${room.roundNumber || 0}</span>
+        <span>💰 ${formatCash(room.settings?.minBet || 0)}</span>
+      </div>
+      <div class="lobby-meta lobby-time">🕑 ${timeAgo(room.createdAt)}</div>
+      <div class="lobby-actions">
+        <button class="pg-btn" data-room-action="watch" data-code="${room.roomCode}">🎥 Watch</button>
+        ${canJoin ? `<button class="pg-btn primary" data-room-action="join" data-code="${room.roomCode}">Join</button>` : ""}
+      </div>
+    `;
+    list.appendChild(card);
+  });
+}
+
+function syncRoomsListener() {
+  const shouldListen = Boolean(state.user) && !state.roomId;
+
+  if (shouldListen && !state.roomsUnsub) {
+    state.roomsUnsub = listenAllRooms((rooms) => {
+      state.allRooms = rooms;
+      renderRoomList();
+    });
+  }
+
+  if (!shouldListen && state.roomsUnsub) {
+    state.roomsUnsub();
+    state.roomsUnsub = null;
+  }
+}
+
 function assignedCardsSet() {
   return new Set([
     ...state.arrangement.front,
@@ -368,6 +452,7 @@ async function enterRoom(roomId) {
     if (!snapshot.exists()) {
       clearRoomState();
       showScreen("menu");
+      syncRoomsListener();
       return;
     }
 
@@ -376,6 +461,7 @@ async function enterRoom(roomId) {
     hostController();
   });
 
+  syncRoomsListener();
   showScreen("room");
 }
 
@@ -1709,6 +1795,7 @@ watchAuth((user) => {
   });
 
   renderMenu();
+  syncRoomsListener();
 
   if (state.roomId) {
     enterRoom(state.roomId);
@@ -1857,6 +1944,7 @@ async function exitToMenu() {
   }
   clearRoomState();
   showScreen("menu");
+  syncRoomsListener();
 }
 
 $("#leave-room-button").addEventListener("click", exitToMenu);
@@ -2184,3 +2272,32 @@ if (adminSearchField && !adminSearchField.dataset.bound) {
     renderAdminUserList();
   });
 }
+
+document.addEventListener("click", async (event) => {
+  const btn = event.target.closest("[data-room-action]");
+  if (!btn) return;
+
+  const code = btn.dataset.code;
+  const action = btn.dataset.roomAction;
+  const name = state.userData?.displayName || state.user.username;
+
+  try {
+    if (action === "watch") {
+      await spectateRoom(state.user, code, name);
+    } else {
+      await joinRoomByCode(state.user, code, name);
+    }
+    await enterRoom(code);
+  } catch (error) {
+    console.error(error);
+    const err = $("#join-room-error");
+    if (err) err.textContent = error.message || "Could not enter room.";
+  }
+});
+
+setInterval(() => {
+  const menu = $("#menu-screen");
+  if (menu && !menu.classList.contains("hidden")) {
+    renderRoomList();
+  }
+}, 30000);
