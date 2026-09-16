@@ -1215,3 +1215,153 @@ button:active { transform: scale(0.97); }
   color: rgba(255, 255, 255, 0.45);
   margin-top: 6px;
 }
+
+/* =========================
+   MOBILE & READABILITY OVERHAUL
+========================= */
+
+html, body { overflow-x: hidden; }
+
+/* --- readable chips: no more invisible text on the sand --- */
+.seat-name,
+.seat-status {
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 999px;
+  padding: 2px 8px;
+  max-width: 110px;
+}
+
+.tmr-tag {
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 6px;
+  padding: 2px 6px;
+  color: #fff;
+}
+
+.pg-message,
+#arrange-status {
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 999px;
+  padding: 6px 14px;
+  width: auto;
+  max-width: 92%;
+  z-index: 11;
+}
+
+/* --- zoom view: scrollable + always fits --- */
+.zoom-view {
+  overflow-y: auto;
+  justify-content: flex-start;
+  padding: 12px 8px 20px;
+  gap: 10px;
+}
+
+.zoom-head {
+  position: sticky; top: 0; z-index: 2;
+  background: rgba(3, 14, 24, 0.92);
+  padding: 6px 0; width: 100%; justify-content: center;
+}
+
+.zoom-controls {
+  position: sticky; bottom: 0; z-index: 2;
+  background: rgba(3, 14, 24, 0.92);
+  padding: 8px 0; width: 100%; justify-content: center;
+}
+
+.zoom-rows { width: 100%; gap: 12px; }
+
+.zoom-rows .my-row { flex-direction: column; align-items: center; gap: 4px; }
+
+.zoom-rows .row-label {
+  flex-direction: row; align-items: center; gap: 8px;
+  min-width: 0; font-size: 13px;
+}
+
+.zoom-rows .row-cards .card {
+  width: clamp(46px, 15vw, 86px);
+  height: clamp(66px, 21vw, 124px);
+  margin-left: clamp(-24px, -6vw, -8px);
+}
+.zoom-rows .row-cards .card:first-child { margin-left: 0; }
+.zoom-rows .row-cards .card .rank { font-size: clamp(14px, 4vw, 24px); }
+.zoom-rows .row-cards .card .suit { font-size: clamp(18px, 5vw, 32px); }
+
+/* --- reveal fit --- */
+.reveal-banner {
+  max-width: 92vw;
+  font-size: clamp(11px, 3vw, 16px);
+  padding: 4px 10px;
+}
+.reveal-cards .reveal-card {
+  width: clamp(40px, 12vw, 62px);
+  height: clamp(58px, 17vw, 90px);
+  margin-left: clamp(-8px, -1.5vw, -2px);
+}
+.reveal-slot { max-width: 46vw; }
+.reveal-left { left: 2%; }
+.reveal-right { right: 2%; }
+
+/* --- score panel: horizontal strip on mobile, hidden when ready area opens --- */
+#ready-area:not(.hidden) ~ #score-panel { display: none; }
+
+@media (max-width: 700px) {
+  .score-panel {
+    left: 50%; right: auto; top: auto; bottom: 6px;
+    transform: translateX(-50%);
+    display: flex; gap: 12px;
+    min-width: 0; padding: 6px 12px;
+  }
+  .sp-row { flex-direction: column; gap: 0; align-items: center; padding: 0; font-size: 11px; }
+  .sp-total { border-top: none; margin: 0; padding: 0 0 0 10px; border-left: 1px solid rgba(255,255,255,.35); }
+  .ready-area { bottom: 6px; width: min(96%, 480px); }
+  .table-my-rows { bottom: 96px; }
+  .arrange-controls { bottom: 8px; }
+}
+
+/* --- small phones --- */
+@media (max-width: 480px) {
+  .avatar { width: 44px; height: 44px; font-size: 18px; border-width: 2px; }
+  .seat-name { font-size: 10px; max-width: 84px; }
+  .coin-pill { font-size: 11px; padding: 2px 8px; }
+  .seat-top { top: 6%; }
+  .seat-left { left: 2%; top: 40%; }
+  .seat-right { right: 2%; top: 40%; }
+  .seat-bottom { bottom: 1%; }
+  .cluster-top { top: 4%; }
+  .cluster-left { left: 4%; top: 12%; }
+  .cluster-right { right: 4%; top: 12%; }
+  .card-back { width: 22px; height: 30px; margin-left: -10px; }
+  .tmr-card { width: 38px; height: 54px; margin-left: -14px; }
+  .tmr-card .rank { font-size: 12px; }
+  .tmr-card .suit { font-size: 15px; }
+  .hud-badge { font-size: 11px; padding: 2px 8px; }
+  .hud-back, .pg-icon-btn { width: 36px; height: 36px; }
+  .banner { font-size: 18px; padding: 6px 18px; }
+  .pg-timer { width: 44px; height: 44px; font-size: 15px; }
+  .ready-btn { height: 42px; padding: 0 26px; font-size: 15px; }
+  .pg-btn { height: 38px; padding: 0 14px; font-size: 13px; }
+  .declare-card { width: 40px; height: 58px; }
+  .declare-title { font-size: 24px; }
+  .fp-panel { padding: 20px 16px; }
+  .draft-card { width: 100px; height: 140px; font-size: 40px; }
+  .fp-title { font-size: 26px; }
+  .lobby-rooms-list { max-height: 220px; }
+}
+
+@media (max-width: 360px) {
+  .zoom-rows .row-cards .card { width: 44px; height: 64px; margin-left: -14px; }
+  .tmr-card { width: 34px; height: 48px; margin-left: -12px; }
+  .avatar { width: 38px; height: 38px; font-size: 16px; }
+  .seat-name { font-size: 9px; max-width: 70px; }
+}
+
+/* --- landscape / short screens --- */
+@media (max-height: 520px) {
+  .pg-table { height: 100vh; border-radius: 0; }
+  .mat-logo { display: none; }
+  .avatar { width: 40px; height: 40px; font-size: 16px; }
+  .zoom-rows .row-cards .card { width: 52px; height: 74px; margin-left: -16px; }
+  .table-my-rows { bottom: 70px; }
+  .ready-area { max-height: 60%; }
+  .seat-status { display: none; }
+}
