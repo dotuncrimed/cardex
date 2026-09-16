@@ -1,4 +1,4 @@
-import { compareArrangements, getRoyalty, isLegalArrangement } from "./evaluator.js";
+import { compareArrangements, getRoyalty, isLegalArrangement, detectSpecial } from "./evaluator.js";
 
 function isFouled(handData) {
   if (!handData || !handData.arrangement) return false;
@@ -27,6 +27,7 @@ export function calculateResults(room, handsMap) {
   const royaltyTotal = {};
   const fouledMap = {};
   const details = {};
+  const specials = {};
 
   players.forEach((p) => {
     matchWins[p.uid] = 0;
@@ -34,11 +35,18 @@ export function calculateResults(room, handsMap) {
     matchupPoints[p.uid] = 0;
     scoopCount[p.uid] = 0;
     fouledMap[p.uid] = isFouled(handsMap[p.uid]);
-    const arr = !fouledMap[p.uid] && handsMap[p.uid]
-      ? handsMap[p.uid].arrangement
-      : null;
-    royaltyTotal[p.uid] = arr ? getRoyalty(arr).total : 0;
+    const hd = handsMap[p.uid];
+    let spec = hd && hd.special ? hd.special : null;
+    if (!spec && hd && hd.hand) spec = detectSpecial(hd.hand);
+    specials[p.uid] = spec;
+    royaltyTotal[p.uid] = 0;
     details[p.uid] = [];
+  });
+
+  players.forEach((p) => {
+    const hd = handsMap[p.uid];
+    const arr = !fouledMap[p.uid] && !specials[p.uid] && hd ? hd.arrangement : null;
+    royaltyTotal[p.uid] = arr ? getRoyalty(arr).total : 0;
   });
 
   for (let i = 0; i < players.length; i++) {
@@ -51,6 +59,37 @@ export function calculateResults(room, handsMap) {
 
       const f1 = fouledMap[p1.uid];
       const f2 = fouledMap[p2.uid];
+      const sp1 = specials[p1.uid];
+      const sp2 = specials[p2.uid];
+
+      if (sp1 || sp2) {
+        if (sp1 && sp2) {
+          if (sp1.tier > sp2.tier) {
+            matchWins[p1.uid] += 1;
+            matchupPoints[p1.uid] += sp1.points;
+            matchupPoints[p2.uid] -= sp1.points;
+          } else if (sp2.tier > sp1.tier) {
+            matchWins[p2.uid] += 1;
+            matchupPoints[p2.uid] += sp2.points;
+            matchupPoints[p1.uid] -= sp2.points;
+          }
+          details[p1.uid].push({ opponentUid: p2.uid, opponentName: p2.displayName, rows: { front: 0, middle: 0, back: 0 }, matchResult: sp1.tier === sp2.tier ? "tie" : (sp1.tier > sp2.tier ? "win" : "lose"), special: sp1.name, opponentSpecial: sp2.name, points: sp1.tier > sp2.tier ? sp1.points : sp2.tier > sp1.tier ? -sp2.points : 0, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+          details[p2.uid].push({ opponentUid: p1.uid, opponentName: p1.displayName, rows: { front: 0, middle: 0, back: 0 }, matchResult: sp1.tier === sp2.tier ? "tie" : (sp2.tier > sp1.tier ? "win" : "lose"), special: sp2.name, opponentSpecial: sp1.name, points: sp2.tier > sp1.tier ? sp2.points : sp1.tier > sp2.tier ? -sp1.points : 0, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+        } else if (sp1) {
+          matchWins[p1.uid] += 1;
+          matchupPoints[p1.uid] += sp1.points;
+          matchupPoints[p2.uid] -= sp1.points;
+          details[p1.uid].push({ opponentUid: p2.uid, opponentName: p2.displayName, rows: { front: 1, middle: 1, back: 1 }, matchResult: "win", special: sp1.name, opponentFoul: f2, points: sp1.points, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+          details[p2.uid].push({ opponentUid: p1.uid, opponentName: p1.displayName, rows: { front: -1, middle: -1, back: -1 }, matchResult: "lose", opponentSpecial: sp1.name, foul: f2, points: -sp1.points, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+        } else {
+          matchWins[p2.uid] += 1;
+          matchupPoints[p2.uid] += sp2.points;
+          matchupPoints[p1.uid] -= sp2.points;
+          details[p2.uid].push({ opponentUid: p1.uid, opponentName: p1.displayName, rows: { front: 1, middle: 1, back: 1 }, matchResult: "win", special: sp2.name, opponentFoul: f1, points: sp2.points, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+          details[p1.uid].push({ opponentUid: p2.uid, opponentName: p2.displayName, rows: { front: -1, middle: -1, back: -1 }, matchResult: "lose", opponentSpecial: sp2.name, foul: f1, points: -sp2.points, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+        }
+        continue;
+      }
 
       if (f1 || f2) {
         if (f1 && !f2) {
@@ -188,6 +227,7 @@ export function calculateResults(room, handsMap) {
       rowWins: rowWins[player.uid] || 0,
       scoops: scoopCount[player.uid] || 0,
       royalties: royaltyTotal[player.uid] || 0,
+      special: specials[player.uid] || null,
       bet: 0,
       prize: 0,
       net: 0,
@@ -231,6 +271,7 @@ export function calculateResults(room, handsMap) {
     rankings,
     details,
     arrangements,
+    specials,
     calculatedAt: Date.now()
   };
 }

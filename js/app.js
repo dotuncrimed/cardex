@@ -33,7 +33,8 @@ import {
   setCash,
   updateDisplayName,
   addAdminLog,
-  listenAllUsers
+  listenAllUsers,
+  declareSpecial
 } from "./db.js";
 
 const state = {

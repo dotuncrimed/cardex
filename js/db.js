@@ -14,6 +14,7 @@ import {
 import { buildDeck, shuffle, sortCards } from "./cards.js";
 import { botArrangeHand } from "./bot.js";
 import { calculateResults } from "./scoring.js";
+import { detectSpecial } from "./evaluator.js";
 
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -426,6 +427,24 @@ export async function submitArrangement(roomId, uid, arrangement, isFouled = fal
   await updatePlayerField(roomId, uid, "submitted", true);
 }
 
+export async function declareSpecial(roomId, uid, hand) {
+  const spec = detectSpecial(hand);
+  if (!spec) throw new Error("No special hand.");
+  const sorted = sortCards(hand);
+  const arrangement = {
+    front: sorted.slice(0, 3),
+    middle: sorted.slice(3, 8),
+    back: sorted.slice(8, 13)
+  };
+  await setDoc(
+    handRef(roomId, uid),
+    { arrangement, special: spec, fouled: false, submitted: true, updatedAt: Date.now() },
+    { merge: true }
+  );
+  await updatePlayerField(roomId, uid, "submitted", true);
+  return spec;
+}
+
 export async function setReady(roomId, uid, ready) {
   await updatePlayerField(roomId, uid, "ready", ready);
 }
@@ -512,12 +531,32 @@ export async function startRound(roomId, user) {
     });
 
     if (player.isBot) {
-      const arrangement = botArrangeHand(
-        hand,
-        player.botLevel || room.settings.botLevel || "normal"
-      );
-
-      await submitArrangement(roomId, player.uid, arrangement, false);
+      const spec = detectSpecial(hand);
+      if (spec) {
+        const sorted = sortCards(hand);
+        await setDoc(
+          handRef(roomId, player.uid),
+          {
+            arrangement: {
+              front: sorted.slice(0, 3),
+              middle: sorted.slice(3, 8),
+              back: sorted.slice(8, 13)
+            },
+            special: spec,
+            fouled: false,
+            submitted: true,
+            updatedAt: Date.now()
+          },
+          { merge: true }
+        );
+        await updatePlayerField(roomId, player.uid, "submitted", true);
+      } else {
+        const arrangement = botArrangeHand(
+          hand,
+          player.botLevel || room.settings.botLevel || "normal"
+        );
+        await submitArrangement(roomId, player.uid, arrangement, false);
+      }
     }
   }
 }
@@ -600,6 +639,25 @@ export async function finishRound(roomId, user) {
       const snap = await getDoc(handRef(roomId, player.uid));
       let data = snap.exists() ? snap.data() : null;
       if (!data) continue;
+
+      if (!data.special && data.hand && data.hand.length === 13) {
+        const spec = detectSpecial(data.hand);
+        if (spec) {
+          const sorted = sortCards(data.hand);
+          data.special = spec;
+          data.arrangement = {
+            front: sorted.slice(0, 3),
+            middle: sorted.slice(3, 8),
+            back: sorted.slice(8, 13)
+          };
+          data.submitted = true;
+          await setDoc(
+            handRef(roomId, player.uid),
+            { arrangement: data.arrangement, special: spec, submitted: true, updatedAt: Date.now() },
+            { merge: true }
+          );
+        }
+      }
 
       if (!data.arrangement && data.hand && data.hand.length === 13) {
         const arrangement = botArrangeHand(
