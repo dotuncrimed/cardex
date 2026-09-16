@@ -304,3 +304,96 @@ export function getRoyalty(arrangement) {
 
   return { front, middle, back, total: front + middle + back };
 }
+
+import { rankOf } from "./cards.js";
+
+export function detectSpecial(hand) {
+  if (!hand || hand.length !== 13) return null;
+
+  const ranks = hand.map((c) => rankOf(c));
+  const suits = hand.map((c) => suitOf(c));
+
+  // Tier 5: Dragon - one of every rank A..K (13 unique ranks)
+  if (new Set(ranks).size === 13) {
+    return { id: "dragon", name: "Dragon", tier: 5, points: 108 };
+  }
+
+  // Tier 4: All Black/Red - all 13 cards same color
+  const colorSet = new Set(suits.map((s) => (s === "H" || s === "D" ? "R" : "B")));
+  if (colorSet.size === 1) {
+    return {
+      id: "allcolor",
+      name: colorSet.has("R") ? "All Red" : "All Black",
+      tier: 4,
+      points: 52
+    };
+  }
+
+  const counts = {};
+  ranks.forEach((r) => { counts[r] = (counts[r] || 0) + 1; });
+
+  // Tier 3: Three Straights - 3/5/5 groups all straights
+  if (hasThreeStraights(counts)) {
+    return { id: "threestraights", name: "Three Straights", tier: 3, points: 39 };
+  }
+
+  // Tier 2: Three Flushes - 3/5/5 groups all flushes
+  const suitCounts = {};
+  suits.forEach((s) => { suitCounts[s] = (suitCounts[s] || 0) + 1; });
+  if (hasThreeFlushes(Object.values(suitCounts))) {
+    return { id: "threeflushes", name: "Three Flushes", tier: 2, points: 26 };
+  }
+
+  // Tier 1: Six Pairs - 6 pairs + 1 odd card
+  const vals = Object.values(counts);
+  const pairs = vals.filter((c) => c === 2).length;
+  const singles = vals.filter((c) => c === 1).length;
+  if (pairs === 6 && singles === 1) {
+    return { id: "sixpairs", name: "Six Pairs", tier: 1, points: 13 };
+  }
+
+  return null;
+}
+
+function hasThreeFlushes(suitCountList) {
+  const bins = [...suitCountList].sort((a, b) => b - a);
+  for (let a = 0; a < 4; a++)
+    for (let b = 0; b < 4; b++)
+      for (let c = 0; c < 4; c++) {
+        const use = [0, 0, 0, 0];
+        use[a] += 5; use[b] += 5; use[c] += 3;
+        if (use.every((u, i) => u <= (bins[i] || 0))) return true;
+      }
+  return false;
+}
+
+function hasThreeStraights(counts) {
+  const pool = {};
+  for (let r = 1; r <= 14; r++) pool[r] = 0;
+  Object.entries(counts).forEach(([k, v]) => { pool[Number(k)] = v; });
+  return searchStraights(pool, [5, 5, 3], 0);
+}
+
+function searchStraights(pool, groups, idx) {
+  if (idx === groups.length) {
+    return Object.values(pool).every((v) => v === 0);
+  }
+  const len = groups[idx];
+  const maxStart = len === 5 ? 10 : 12;
+  for (let s = 1; s <= maxStart; s++) {
+    const used = [];
+    let ok = true;
+    for (let i = 0; i < len; i++) {
+      let r = s + i;
+      if (r === 1 && pool[1] === 0 && pool[14] > 0) r = 14;
+      if ((pool[r] || 0) <= 0) { ok = false; break; }
+      used.push(r);
+    }
+    if (!ok) continue;
+    used.forEach((r) => { pool[r] -= 1; });
+    const found = searchStraights(pool, groups, idx + 1);
+    used.forEach((r) => { pool[r] += 1; });
+    if (found) return true;
+  }
+  return false;
+}
