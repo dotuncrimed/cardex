@@ -435,6 +435,7 @@ function renderSeats() {
 
   const myPlayer = currentUserPlayerObject();
   const mySeat = myPlayer ? myPlayer.seat : 0;
+  const minBet = Number(state.room.settings.minBet) || 0;
 
   state.room.players.forEach((player) => {
     const pos = SEAT_POS[seatOffset(player.seat, mySeat)];
@@ -442,6 +443,15 @@ function renderSeats() {
     if (!el) return;
 
     const isSelf = player.uid === state.user.uid;
+
+    let cashVal;
+    if (player.isBot) {
+      cashVal = state.cashMap[player.uid] ?? minBet * 10;
+    } else if (isSelf) {
+      cashVal = state.cashMap[player.username] ?? state.userData?.cash ?? 0;
+    } else {
+      cashVal = state.cashMap[player.username] ?? 0;
+    }
 
     let status = "";
     if (["arranging", "scoring"].includes(state.room.status)) {
@@ -452,8 +462,9 @@ function renderSeats() {
 
     el.innerHTML = `
       <div class="avatar">${(player.displayName || "?").charAt(0).toUpperCase()}</div>
-      <div class="coin-pill">${isSelf ? (state.userData?.cash ?? 0) : player.displayName}</div>
-      <div class="seat-status">${status}${player.isBot ? " 🤖" : ""}</div>
+      <div class="seat-name">${player.displayName}${isSelf ? " (You)" : ""}${player.isBot ? " 🤖" : ""}</div>
+      <div class="coin-pill">${formatCash(cashVal)}</div>
+      <div class="seat-status">${status}</div>
     `;
   });
 }
@@ -1458,6 +1469,7 @@ function renderRoom() {
 
   renderRoomInfo();
   renderSeats();
+  syncCashListeners();
   renderOpponentClusters();
   renderLobbySection();
   manageHandListener();
