@@ -206,15 +206,30 @@ export function calculateResults(room, handsMap) {
 
   const rankings = players.map((player) => {
     const fouled = fouledMap[player.uid];
-    const royaltyIncome = fouled ? 0 : royaltyTotal[player.uid] * numOpponents;
+    const special = specials[player.uid] || null;
+
+    // Fouled and special players earn NO royalty income
+    const royaltyIncome =
+      (fouled || special) ? 0 : royaltyTotal[player.uid] * numOpponents;
+
     let royaltyPaid = 0;
     players.forEach((opp) => {
-      if (opp.uid !== player.uid && !fouledMap[opp.uid]) {
-        royaltyPaid += royaltyTotal[opp.uid];
-      }
+      if (opp.uid === player.uid) return;
+      if (fouledMap[opp.uid] || specials[opp.uid]) return;
+      royaltyPaid += royaltyTotal[opp.uid];
     });
-    const scorePoints =
+
+    let scorePoints =
       matchupPoints[player.uid] + royaltyIncome - royaltyPaid;
+
+    // HARD INVARIANT: a fouled hand can never end positive
+    if (fouled) {
+      scorePoints = matchupPoints[player.uid] - royaltyPaid;
+      if (scorePoints > 0) {
+        console.warn("Clamping impossible positive foul score:", player.uid);
+        scorePoints = -6 * numOpponents;
+      }
+    }
 
     return {
       uid: player.uid,
@@ -227,14 +242,14 @@ export function calculateResults(room, handsMap) {
       rowWins: rowWins[player.uid] || 0,
       scoops: scoopCount[player.uid] || 0,
       royalties: royaltyTotal[player.uid] || 0,
-      special: specials[player.uid] || null,
       bet: 0,
       prize: 0,
       net: 0,
       netCoins: 0,
       humanRank: null,
       overallRank: null,
-      fouled
+      fouled,
+      special
     };
   });
 

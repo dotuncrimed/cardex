@@ -631,6 +631,8 @@ export async function finishRound(roomId, user) {
 
   if (room.status !== "arranging" && room.status !== "scoring") return;
 
+  if ((room.roundNumber || 0) > 0 && room.settledRound === room.roundNumber) return;
+
   if (room.status === "arranging") {
     await updateDoc(roomRef(roomId), { status: "scoring", updatedAt: Date.now() });
   }
@@ -677,22 +679,38 @@ export async function finishRound(roomId, user) {
 
     const results = calculateResults(room, handsMap);
 
-    for (const ranking of results.rankings) {
-      if (ranking.isBot) continue;
-      if (ranking.netCoins !== 0) {
-        await adjustCash(
+    const fresh = await getRoom(roomId);
+    const alreadySettled =
+      fresh && fresh.settledRound === results.roundNumber;
+
+    if (!alreadySettled) {
+      for (const ranking of results.rankings) {
+        if (ranking.isBot) continue;
+
+        const delta = Number(ranking.netCoins) || 0;
+
+        // MONEY-LAYER GUARD: fouled players can never receive coins
+        if (ranking.fouled && delta > 0) {
+          console.error("BLOCKED positive settlement for fouled player:", ranking.uid);
+          continue;
+        }
+
+        if (delta !== 0) {
+          await adjustCash(
+            ranking.username,
+            delta,
+            "game_settle",
+            `Room ${roomId} round ${results.roundNumber}`,
+            user.username
+          );
+        }
+
+        await updateUserStats(
           ranking.username,
-          ranking.netCoins,
-          "game_settle",
-          `Room ${roomId} round ${results.roundNumber}`,
-          user.username
+          ranking.scorePoints,
+          ranking.overallRank === 1 && ranking.scorePoints > 0
         );
       }
-      await updateUserStats(
-        ranking.username,
-        ranking.scorePoints,
-        ranking.overallRank === 1 && ranking.scorePoints > 0
-      );
     }
 
     const readyTimerSeconds = Number(room.settings.readyTimerSeconds) || 0;
@@ -704,6 +722,7 @@ export async function finishRound(roomId, user) {
       players,
       status: "round_end",
       phaseEndsAt,
+      settledRound: results.roundNumber,
       updatedAt: Date.now()
     });
   } catch (error) {
@@ -719,7 +738,7 @@ export async function finishRound(roomId, user) {
         updatedAt: Date.now()
       });
     } catch (e2) {
-      console.error("Emergency progress failed:", e2);
+      console.error("emergency progress failed:", e2);
     }
   }
 }
