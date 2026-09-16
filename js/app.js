@@ -32,7 +32,8 @@ import {
   adjustCash,
   setCash,
   updateDisplayName,
-  addAdminLog
+  addAdminLog,
+  listenAllUsers
 } from "./db.js";
 
 const state = {
@@ -67,6 +68,10 @@ const state = {
   cashMap: {},
   cashListeners: {},
   coinsFlyedFor: null,
+  adminUsers: [],
+  adminUnsub: null,
+  adminSearch: "",
+  adminSelectedUsername: null,
 };
 
 function $(selector) {
@@ -201,6 +206,88 @@ function setRoomMessage(message) {
 
 function setAdminMessage(message) {
   $("#admin-message").textContent = message || "";
+}
+
+function renderAdminUserList() {
+  const list = $("#admin-user-list");
+  if (!list) return;
+  list.innerHTML = "";
+
+  const q = (state.adminSearch || "").trim().toLowerCase();
+
+  const users = [...state.adminUsers]
+    .filter((u) =>
+      !q ||
+      (u.username || "").includes(q) ||
+      (u.displayName || "").toLowerCase().includes(q)
+    )
+    .sort((a, b) => (Number(b.cash) || 0) - (Number(a.cash) || 0));
+
+  if (users.length === 0) {
+    list.innerHTML = '<div class="admin-empty">No users found.</div>';
+    return;
+  }
+
+  users.forEach((u) => {
+    const row = document.createElement("div");
+    row.className =
+      "admin-user-row" +
+      (u.username === state.adminSelectedUsername ? " selected" : "");
+
+    const info = document.createElement("div");
+    info.className = "admin-user-info-wrap";
+    info.innerHTML = `
+      <div class="admin-user-avatar">${(u.displayName || u.username || "?").charAt(0).toUpperCase()}</div>
+      <div class="admin-user-info">
+        <div class="admin-user-name">${u.displayName || u.username}
+          <span class="admin-user-username">@${u.username}</span>
+        </div>
+        <div class="admin-user-stats">
+          Cash ${formatCash(u.cash || 0)} • Games ${u.games || 0} •
+          Wins ${u.wins || 0} • Pts ${u.points || 0}
+        </div>
+      </div>
+    `;
+
+    const btn = document.createElement("button");
+    btn.className = "pg-btn";
+    btn.textContent = "Edit";
+    btn.addEventListener("click", () => selectAdminUser(u.username));
+
+    row.appendChild(info);
+    row.appendChild(btn);
+    list.appendChild(row);
+  });
+}
+
+function selectAdminUser(username) {
+  state.adminSelectedUsername = username;
+
+  const u = state.adminUsers.find((x) => x.username === username);
+
+  const usernameField = $("#admin-player-username");
+  if (usernameField) usernameField.value = username;
+
+  if (u) {
+    const infoBox = $("#admin-player-info");
+    if (infoBox) {
+      infoBox.innerHTML = `
+        <div>Username: ${u.username}</div>
+        <div>Display Name: ${u.displayName || "-"}</div>
+        <div>Cash: ${u.cash || 0}</div>
+        <div>Games: ${u.games || 0}</div>
+        <div>Wins: ${u.wins || 0}</div>
+        <div>Points: ${u.points || 0}</div>
+      `;
+    }
+    const nameField = $("#admin-display-name");
+    if (nameField) nameField.value = u.displayName || "";
+    const cashField = $("#admin-cash-amount");
+    if (cashField) cashField.value = u.cash || 0;
+  }
+
+  renderAdminUserList();
+  setAdminMessage("Selected @" + username + " for editing.");
 }
 
 function emptyArrangement() {
@@ -1560,6 +1647,31 @@ function showAdminScreen() {
   }
 
   loadAdminRoomSettings();
+
+  if (!state.adminUnsub) {
+    state.adminUnsub = listenAllUsers((users) => {
+      state.adminUsers = users;
+      renderAdminUserList();
+
+      if (state.adminSelectedUsername) {
+        const u = users.find((x) => x.username === state.adminSelectedUsername);
+        if (u) {
+          const infoBox = $("#admin-player-info");
+          if (infoBox) {
+            infoBox.innerHTML = `
+              <div>Username: ${u.username}</div>
+              <div>Display Name: ${u.displayName || "-"}</div>
+              <div>Cash: ${u.cash || 0}</div>
+              <div>Games: ${u.games || 0}</div>
+              <div>Wins: ${u.wins || 0}</div>
+              <div>Points: ${u.points || 0}</div>
+            `;
+          }
+        }
+      }
+    });
+  }
+
   showScreen("admin");
 }
 
@@ -1812,6 +1924,11 @@ $("#admin-button").addEventListener("click", showAdminScreen);
 $("#room-admin-button").addEventListener("click", showAdminScreen);
 
 $("#admin-back-button").addEventListener("click", () => {
+  if (state.adminUnsub) {
+    state.adminUnsub();
+    state.adminUnsub = null;
+  }
+
   if (state.roomId) {
     showScreen("room");
   } else {
@@ -2043,5 +2160,14 @@ if (swapMidBackBtn && !swapMidBackBtn.dataset.bound) {
     if (typeof renderMyRows === "function") {
       renderMyRows();
     }
+  });
+}
+
+const adminSearchField = document.getElementById("admin-user-search");
+if (adminSearchField && !adminSearchField.dataset.bound) {
+  adminSearchField.dataset.bound = "true";
+  adminSearchField.addEventListener("input", (e) => {
+    state.adminSearch = e.target.value;
+    renderAdminUserList();
   });
 }

@@ -981,3 +981,77 @@ button:active { transform: scale(0.97); }
   font-size: 11px;
   box-shadow: 0 2px 0 #4a148c;
 }
+
+.admin-user-list {
+  max-height: 320px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.admin-user-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.admin-user-row.selected {
+  border-color: #ffd54f;
+  background: rgba(255, 213, 79, 0.12);
+}
+
+.admin-user-info-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.admin-user-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #ffd54f, #ff9800);
+  color: #332000;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.admin-user-info { flex: 1; }
+
+.admin-user-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.admin-user-username {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.admin-user-stats {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.admin-empty {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  padding: 8px;
+}
+
+.admin-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.15);
+  margin: 14px 0;
+}
