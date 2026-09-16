@@ -518,7 +518,7 @@ function renderRoomInfo() {
   if (roundEl) roundEl.textContent = "Round " + (state.room.roundNumber || 0);
 
   const potEl = $("#pg-pot");
-  if (potEl) potEl.textContent = "Pot " + (state.room.pot || 0);
+  if (potEl) potEl.textContent = "1 pt = " + (state.room.settings.minBet || 0);
 
   const hudCash = $("#hud-cash");
   if (hudCash) hudCash.textContent = state.userData?.cash ?? 0;
@@ -1096,15 +1096,10 @@ function renderResultBoards(results) {
     head.className = "pg-board-head";
     
     let headText = `${index + 1}. ${ranking.displayName}`;
-    headText += `${ranking.isBot ? " (Bot)" : ""} — ${ranking.points} wins`;
-    
-    if (ranking.scoops > 0) {
-      headText += ` • 🏠 ${ranking.scoops} Scoop${ranking.scoops > 1 ? "s" : ""}`;
-    }
-    
-    if (ranking.royalties > 0) {
-      headText += ` • 💎 +${ranking.royalties} Royalty`;
-    }
+    headText += `${ranking.isBot ? " (Bot)" : ""} — ${ranking.scorePoints} pts`;
+    if (ranking.scoops > 0) headText += ` • 🏠 ${ranking.scoops} Scoop${ranking.scoops > 1 ? "s" : ""}`;
+    if (ranking.royalties > 0) headText += ` • 💎 +${ranking.royalties} Royalty`;
+    if (ranking.fouled) headText += ` • FOUL`;
     
     head.textContent = headText;
     board.appendChild(head);
@@ -1120,9 +1115,7 @@ function renderResultBoards(results) {
     if (!ranking.isBot) {
       const net = document.createElement("div");
       net.className = "pg-board-net";
-      net.textContent =
-        `Bet ${ranking.bet} • Prize ${ranking.prize} • ` +
-        `Net ${ranking.net >= 0 ? "+" : ""}${ranking.net}`;
+      net.textContent = `Net ${ranking.netCoins >= 0 ? "+" : ""}${ranking.netCoins} coins`;
       board.appendChild(net);
     }
 
@@ -1145,9 +1138,7 @@ function renderResultsSection() {
   }
 
   resultSummary.textContent =
-    `Round ${results.roundNumber} | ` +
-    `Pot ${results.pot} | ` +
-    `Winner = most opponents beaten`;
+    `Round ${results.roundNumber} | 1 pt = ${results.minBet} | Winner = most points`;
 
   resultTable.innerHTML = "";
 
@@ -1262,8 +1253,8 @@ function renderReadyArea() {
     results.rankings.forEach((r, idx) => {
       rankMap[r.uid] = {
         rank: idx + 1,
-        points: r.points,
-        net: r.net,
+        points: r.scorePoints,
+        net: r.netCoins,
         prize: r.prize,
         fouled: r.fouled,
         scoops: r.scoops || 0,
