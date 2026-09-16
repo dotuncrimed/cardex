@@ -859,3 +859,39 @@ button:active { transform: scale(0.97); }
   .score-panel { right: 8px; top: 64px; bottom: auto; min-width: 120px; }
   .fp-menu-grid { grid-template-columns: 1fr; }
 }
+
+/* Add these for Zoom & Fixes */
+.zoom-view {
+  position: absolute; inset: 0; background: rgba(3,14,24,0.95); z-index: 20;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+}
+.zoom-head { display: flex; align-items: center; gap: 12px; color: #fff; font-weight: 800; font-size: 16px; }
+.zoom-rows .row-cards .card { width: 86px; height: 124px; margin-left: -30px; cursor: pointer; transition: transform 0.1s; }
+.zoom-rows .row-cards .card:first-child { margin-left: 0; }
+.zoom-rows .row-cards .card .rank { font-size: 24px; }
+.zoom-rows .row-cards .card .suit { font-size: 32px; }
+.zoom-controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+.table-my-rows {
+  position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 6px; align-items: center; z-index: 7;
+}
+.tmr-row { display: flex; align-items: center; gap: 8px; }
+.tmr-tag { font-size: 11px; font-weight: 800; color: rgba(255,255,255,.7); min-width: 44px; text-align: right; }
+.tmr-cards { display: flex; }
+.tmr-card { width: 52px; height: 74px; margin-left: -20px; }
+.tmr-card:first-child { margin-left: 0; }
+
+/* Fluid Card Selection */
+.card.selected { transform: translateY(-15px); z-index: 100; box-shadow: 0 10px 20px rgba(0,0,0,0.5); border: 2px solid #ffd54f; }
+
+/* Ready List Ranking */
+.pg-ready-list { display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; margin-bottom: 10px; }
+.ready-status-row { display: flex; justify-content: space-between; padding: 6px 10px; background: rgba(255,255,255,0.1); border-radius: 6px; font-size: 14px; }
+.ready-status-row .player-name { font-weight: bold; }
+
+/* Timer Visibility */
+#pg-timer, #zoom-timer { font-weight: 900; color: #fff; }
+
+/* Exit Button Style */
+#exit-room-button, #join-game-button { background: #ff5252; color: white; }
