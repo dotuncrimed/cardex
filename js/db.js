@@ -662,3 +662,13 @@ export async function finishRound(roomId, user) {
     }
   }
 }
+
+export function listenAllUsers(callback) {
+  return onSnapshot(collection(db, "users"), (snapshot) => {
+    const users = [];
+    snapshot.forEach((docSnap) => {
+      users.push({ username: docSnap.id, ...docSnap.data() });
+    });
+    callback(users);
+  });
+}
