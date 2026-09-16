@@ -1,4 +1,21 @@
-import { compareArrangements } from "./evaluator.js";
+import { compareArrangements, isLegalArrangement } from "./evaluator.js";
+
+function isFouled(handData) {
+  if (!handData || !handData.arrangement) return false;
+  if (handData.fouled) return true;
+  
+  // Double-check legality as backup
+  const arr = handData.arrangement;
+  if (
+    !Array.isArray(arr.front) || arr.front.length !== 3 ||
+    !Array.isArray(arr.middle) || arr.middle.length !== 5 ||
+    !Array.isArray(arr.back) || arr.back.length !== 5
+  ) {
+    return true;
+  }
+  
+  return !isLegalArrangement(arr);
+}
 
 export function calculateResults(room, handsMap) {
   const players = room.players;
@@ -27,6 +44,63 @@ export function calculateResults(room, handsMap) {
 
       if (!handOne.arrangement || !handTwo.arrangement) {
         continue;
+      }
+
+      const foulOne = isFouled(handOne);
+      const foulTwo = isFouled(handTwo);
+
+      if (foulOne || foulTwo) {
+        // Fouled player(s) auto-lose
+        if (foulOne && !foulTwo) {
+          matchWins[playerTwo.uid] += 1;
+          details[playerOne.uid].push({
+            opponentUid: playerTwo.uid,
+            opponentName: playerTwo.displayName,
+            rows: { front: -1, middle: -1, back: -1 },
+            matchResult: "lose",
+            foul: true
+          });
+          details[playerTwo.uid].push({
+            opponentUid: playerOne.uid,
+            opponentName: playerOne.displayName,
+            rows: { front: 1, middle: 1, back: 1 },
+            matchResult: "win",
+            opponentFoul: true
+          });
+        } else if (foulTwo && !foulOne) {
+          matchWins[playerOne.uid] += 1;
+          details[playerOne.uid].push({
+            opponentUid: playerTwo.uid,
+            opponentName: playerTwo.displayName,
+            rows: { front: 1, middle: 1, back: 1 },
+            matchResult: "win",
+            opponentFoul: true
+          });
+          details[playerTwo.uid].push({
+            opponentUid: playerOne.uid,
+            opponentName: playerOne.displayName,
+            rows: { front: -1, middle: -1, back: -1 },
+            matchResult: "lose",
+            foul: true
+          });
+        } else {
+          // Both fouled = tie
+          details[playerOne.uid].push({
+            opponentUid: playerTwo.uid,
+            opponentName: playerTwo.displayName,
+            rows: { front: 0, middle: 0, back: 0 },
+            matchResult: "tie",
+            foul: true
+          });
+          details[playerTwo.uid].push({
+            opponentUid: playerOne.uid,
+            opponentName: playerOne.displayName,
+            rows: { front: 0, middle: 0, back: 0 },
+            matchResult: "tie",
+            foul: true
+          });
+        }
+        continue; // Skip normal comparison
       }
 
       const comparison = compareArrangements(
@@ -92,6 +166,9 @@ export function calculateResults(room, handsMap) {
   }
 
   const rankings = players.map((player) => {
+    const handData = handsMap[player.uid];
+    const fouled = isFouled(handData);
+    
     return {
       uid: player.uid,
       username: player.username,
@@ -103,7 +180,8 @@ export function calculateResults(room, handsMap) {
       prize: 0,
       net: 0,
       humanRank: null,
-      overallRank: null
+      overallRank: null,
+      fouled: fouled
     };
   });
 

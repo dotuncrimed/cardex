@@ -895,3 +895,69 @@ button:active { transform: scale(0.97); }
 
 /* Exit Button Style */
 #exit-room-button, #join-game-button { background: #ff5252; color: white; }
+
+.player-row.winner {
+  background: linear-gradient(90deg, rgba(255, 215, 0, 0.15), rgba(255, 215, 0, 0.05));
+  border: 2px solid #ffd700;
+}
+
+.player-row.fouled {
+  background: rgba(255, 82, 82, 0.1);
+  border: 2px solid #ff5252;
+  opacity: 0.7;
+}
+
+.player-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.winner-badge {
+  background: linear-gradient(145deg, #ffd700, #ff9800);
+  color: #332000;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 11px;
+  box-shadow: 0 2px 0 #b26a00;
+  animation: winnerPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes winnerPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.foul-badge {
+  background: #ff5252;
+  color: #fff;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 11px;
+  box-shadow: 0 2px 0 #c62828;
+}
+
+.rank-badge {
+  background: rgba(255, 255, 255, 0.15);
+  color: #e0f2f1;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.net-badge {
+  background: rgba(38, 166, 154, 0.3);
+  color: #80cbc4;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.net-badge:contains("-") {
+  background: rgba(255, 82, 82, 0.3);
+  color: #ff8a80;
+}

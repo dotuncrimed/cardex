@@ -1003,14 +1003,15 @@ async function submitHumanArrangement() {
     return;
   }
 
-  if (!isLegalArrangement(arrangement)) {
-    setRoomMessage("Illegal arrangement. Back must beat Middle, Middle must beat Front.");
-    return;
+  const isFouled = !isLegalArrangement(arrangement);
+  
+  if (isFouled) {
+    setRoomMessage("FOUL! Your arrangement is illegal. You will auto-lose this round.");
   }
 
   try {
-    await submitArrangement(state.roomId, state.user.uid, arrangement);
-    setRoomMessage("Submitted.");
+    await submitArrangement(state.roomId, state.user.uid, arrangement, isFouled);
+    setRoomMessage(isFouled ? "Fouled arrangement submitted." : "Submitted.");
   } catch (error) {
     console.error(error);
     setRoomMessage("Submit failed.");
@@ -1237,24 +1238,62 @@ function renderReadyArea() {
 
   if (!state.room || state.room.status !== "round_end") return;
 
+  const results = state.room.results;
   const players = [...state.room.players].sort((a, b) => a.seat - b.seat);
 
   const title = document.createElement("h4");
-  title.textContent = "Next Round Status";
+  title.textContent = "Round Results & Next Round Status";
   title.style.margin = "0 0 10px 0";
   readyList.appendChild(title);
 
+  // Build a map of player rankings
+  const rankMap = {};
+  if (results && results.rankings) {
+    results.rankings.forEach((r, idx) => {
+      rankMap[r.uid] = {
+        rank: idx + 1,
+        points: r.points,
+        net: r.net,
+        prize: r.prize,
+        fouled: r.fouled,
+        isWinner: idx === 0
+      };
+    });
+  }
+
   players.forEach((player) => {
     const div = document.createElement("div");
-    div.className = `player-row ready-status-row ${player.ready ? "ready" : "not-ready"}`;
+    const rankInfo = rankMap[player.uid];
+    const isWinner = rankInfo && rankInfo.isWinner;
+    const isFouled = rankInfo && rankInfo.fouled;
+    
+    div.className = `player-row ready-status-row ${player.ready ? "ready" : "not-ready"} ${isWinner ? "winner" : ""} ${isFouled ? "fouled" : ""}`;
 
-    const icon = player.ready ? "✅" : "❌";
+    const readyIcon = player.ready ? "✅" : "❌";
     const statusText = player.ready ? "Ready" : "Waiting...";
     const youText = (state.user && player.uid === state.user.uid) ? " (You)" : "";
+    
+    let rankBadge = "";
+    if (rankInfo) {
+      if (isWinner) {
+        rankBadge = `<span class="winner-badge">🏆 WINNER</span>`;
+      } else if (isFouled) {
+        rankBadge = `<span class="foul-badge">FOUL</span>`;
+      } else {
+        const ordinal = rankInfo.rank === 1 ? "st" : rankInfo.rank === 2 ? "nd" : rankInfo.rank === 3 ? "rd" : "th";
+        rankBadge = `<span class="rank-badge">${rankInfo.rank}${ordinal} • ${rankInfo.points} pts</span>`;
+      }
+      
+      if (!player.isBot) {
+        const netStr = rankInfo.net >= 0 ? `+${rankInfo.net}` : `${rankInfo.net}`;
+        rankBadge += `<span class="net-badge">${netStr}</span>`;
+      }
+    }
 
     div.innerHTML = `
-      <span class="ready-icon">${icon}</span>
+      <span class="ready-icon">${readyIcon}</span>
       <span class="player-name">${player.displayName}${youText}</span>
+      <div class="player-badges">${rankBadge}</div>
       <span class="ready-text">${statusText}</span>
     `;
 
