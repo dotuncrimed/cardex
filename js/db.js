@@ -473,18 +473,6 @@ export async function startRound(roomId, user) {
 
   const roundNumber = (Number(room.roundNumber) || 0) + 1;
 
-  for (const human of humans) {
-    if (minBet > 0) {
-      await adjustCash(
-        human.username,
-        -minBet,
-        "room_entry",
-        `Room ${roomId} round ${roundNumber}`,
-        user.username
-      );
-    }
-  }
-
   const arrangeTimerSeconds = Number(room.settings.arrangeTimerSeconds) || 0;
 
   const phaseEndsAt =
@@ -498,7 +486,7 @@ export async function startRound(roomId, user) {
     players,
     status: "arranging",
     roundNumber,
-    pot: minBet * 4,
+    pot: 0,
     results: null,
     phaseEndsAt,
     updatedAt: Date.now()
@@ -618,7 +606,7 @@ export async function finishRound(roomId, user) {
           data.hand,
           player.botLevel || room.settings.botLevel || "normal"
         );
-        await submitArrangement(roomId, player.uid, arrangement);
+        await submitArrangement(roomId, player.uid, arrangement, false);
         data.arrangement = arrangement;
         data.submitted = true;
       }
@@ -630,16 +618,20 @@ export async function finishRound(roomId, user) {
 
     for (const ranking of results.rankings) {
       if (ranking.isBot) continue;
-      if (ranking.prize > 0) {
+      if (ranking.netCoins !== 0) {
         await adjustCash(
           ranking.username,
-          ranking.prize,
-          "game_win",
+          ranking.netCoins,
+          "game_settle",
           `Room ${roomId} round ${results.roundNumber}`,
           user.username
         );
       }
-      await updateUserStats(ranking.username, ranking.points, ranking.prize > 0);
+      await updateUserStats(
+        ranking.username,
+        ranking.scorePoints,
+        ranking.overallRank === 1 && ranking.scorePoints > 0
+      );
     }
 
     const readyTimerSeconds = Number(room.settings.readyTimerSeconds) || 0;
