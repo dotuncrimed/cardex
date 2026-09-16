@@ -961,3 +961,23 @@ button:active { transform: scale(0.97); }
   background: rgba(255, 82, 82, 0.3);
   color: #ff8a80;
 }
+
+.scoop-badge {
+  background: linear-gradient(145deg, #4caf50, #2e7d32);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 11px;
+  box-shadow: 0 2px 0 #1b5e20;
+}
+
+.royalty-badge {
+  background: linear-gradient(145deg, #9c27b0, #6a1b9a);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 11px;
+  box-shadow: 0 2px 0 #4a148c;
+}

@@ -272,3 +272,35 @@ export function compareArrangements(a, b) {
     back: compare5(evaluate5(a.back), evaluate5(b.back))
   };
 }
+
+export function getRoyalty(arrangement) {
+  if (!arrangement) return { front: 0, middle: 0, back: 0, total: 0 };
+
+  const frontEval = evaluate3(arrangement.front);
+  const middleEval = evaluate5(arrangement.middle);
+  const backEval = evaluate5(arrangement.back);
+
+  let front = 0;
+  let middle = 0;
+  let back = 0;
+
+  // Front royalties
+  if (frontEval.category === 3) front = 3; // 3-of-a-kind
+
+  // Middle royalties
+  if (middleEval.category === 7) middle = 2;  // Full House
+  if (middleEval.category === 8) middle = 8;  // 4-of-a-kind
+  if (middleEval.category === 9) middle = 10; // Straight Flush
+  if (middleEval.category === 9 && middleEval.tiebreakers[0] === 14) {
+    middle = 20; // Royal Flush
+  }
+
+  // Back royalties
+  if (backEval.category === 8) back = 4;  // 4-of-a-kind
+  if (backEval.category === 9) back = 5;  // Straight Flush
+  if (backEval.category === 9 && backEval.tiebreakers[0] === 14) {
+    back = 10; // Royal Flush
+  }
+
+  return { front, middle, back, total: front + middle + back };
+}

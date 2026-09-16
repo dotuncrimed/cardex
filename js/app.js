@@ -1091,15 +1091,22 @@ function renderResultBoards(results) {
 
     const head = document.createElement("div");
     head.className = "pg-board-head";
-    head.textContent =
-      `${index + 1}. ${ranking.displayName}` +
-      `${ranking.isBot ? " (Bot)" : ""} — ${ranking.points} wins`;
-
+    
+    let headText = `${index + 1}. ${ranking.displayName}`;
+    headText += `${ranking.isBot ? " (Bot)" : ""} — ${ranking.points} wins`;
+    
+    if (ranking.scoops > 0) {
+      headText += ` • 🏠 ${ranking.scoops} Scoop${ranking.scoops > 1 ? "s" : ""}`;
+    }
+    
+    if (ranking.royalties > 0) {
+      headText += ` • 💎 +${ranking.royalties} Royalty`;
+    }
+    
+    head.textContent = headText;
     board.appendChild(head);
 
-    const arrangement = results.arrangements
-      ? results.arrangements[ranking.uid]
-      : null;
+    const arrangement = results.arrangements ? results.arrangements[ranking.uid] : null;
 
     if (arrangement) {
       board.appendChild(createCombinationBlock("Front", arrangement.front));
@@ -1256,6 +1263,8 @@ function renderReadyArea() {
         net: r.net,
         prize: r.prize,
         fouled: r.fouled,
+        scoops: r.scoops || 0,
+        royalties: r.royalties || 0,
         isWinner: idx === 0
       };
     });
@@ -1282,6 +1291,14 @@ function renderReadyArea() {
       } else {
         const ordinal = rankInfo.rank === 1 ? "st" : rankInfo.rank === 2 ? "nd" : rankInfo.rank === 3 ? "rd" : "th";
         rankBadge = `<span class="rank-badge">${rankInfo.rank}${ordinal} • ${rankInfo.points} pts</span>`;
+      }
+      
+      if (rankInfo.scoops > 0) {
+        rankBadge += `<span class="scoop-badge">🏠 ${rankInfo.scoops}</span>`;
+      }
+      
+      if (rankInfo.royalties > 0) {
+        rankBadge += `<span class="royalty-badge">💎 +${rankInfo.royalties}</span>`;
       }
       
       if (!player.isBot) {
