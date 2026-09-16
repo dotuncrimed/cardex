@@ -8,7 +8,10 @@ import {
   collection,
   addDoc,
   increment,
-  deleteDoc
+  deleteDoc,
+  query,
+  orderBy,
+  limit
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 import { buildDeck, shuffle, sortCards } from "./cards.js";
@@ -729,4 +732,31 @@ export function listenAllUsers(callback) {
     });
     callback(users);
   });
+}
+
+export function listenAllRooms(callback) {
+  const q = query(
+    collection(db, "rooms"),
+    orderBy("createdAt", "desc"),
+    limit(30)
+  );
+  return onSnapshot(q, (snapshot) => {
+    const rooms = [];
+    snapshot.forEach((d) => rooms.push({ id: d.id, ...d.data() }));
+    callback(rooms);
+  });
+}
+
+export async function spectateRoom(user, code, displayName) {
+  code = String(code || "").trim().toUpperCase();
+  const room = await getRoom(code);
+  if (!room) throw new Error("Room not found.");
+  if (room.players.some((p) => p.uid === user.uid)) return code;
+  if (room.spectators.some((s) => s.uid === user.uid)) return code;
+  const spectators = [
+    ...room.spectators,
+    { uid: user.uid, username: user.username, displayName, joinedAt: Date.now() }
+  ];
+  await updateDoc(roomRef(code), { spectators });
+  return code;
 }
