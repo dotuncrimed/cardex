@@ -8,12 +8,16 @@ import {
   collection,
   addDoc,
   increment,
-  deleteDoc
+  deleteDoc,
+  query,
+  orderBy,
+  limit
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 import { buildDeck, shuffle, sortCards } from "./cards.js";
 import { botArrangeHand } from "./bot.js";
 import { calculateResults } from "./scoring.js";
+import { detectSpecial } from "./evaluator.js";
 
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -411,11 +415,12 @@ async function updatePlayerField(roomId, uid, field, value) {
   });
 }
 
-export async function submitArrangement(roomId, uid, arrangement) {
+export async function submitArrangement(roomId, uid, arrangement, isFouled = false) {
   await setDoc(
     handRef(roomId, uid),
     {
       arrangement,
+      fouled: isFouled,
       submitted: true,
       updatedAt: Date.now()
     },
@@ -423,6 +428,24 @@ export async function submitArrangement(roomId, uid, arrangement) {
   );
 
   await updatePlayerField(roomId, uid, "submitted", true);
+}
+
+export async function declareSpecial(roomId, uid, hand) {
+  const spec = detectSpecial(hand);
+  if (!spec) throw new Error("No special hand.");
+  const sorted = sortCards(hand);
+  const arrangement = {
+    front: sorted.slice(0, 3),
+    middle: sorted.slice(3, 8),
+    back: sorted.slice(8, 13)
+  };
+  await setDoc(
+    handRef(roomId, uid),
+    { arrangement, special: spec, fouled: false, submitted: true, updatedAt: Date.now() },
+    { merge: true }
+  );
+  await updatePlayerField(roomId, uid, "submitted", true);
+  return spec;
 }
 
 export async function setReady(roomId, uid, ready) {
@@ -472,18 +495,6 @@ export async function startRound(roomId, user) {
 
   const roundNumber = (Number(room.roundNumber) || 0) + 1;
 
-  for (const human of humans) {
-    if (minBet > 0) {
-      await adjustCash(
-        human.username,
-        -minBet,
-        "room_entry",
-        `Room ${roomId} round ${roundNumber}`,
-        user.username
-      );
-    }
-  }
-
   const arrangeTimerSeconds = Number(room.settings.arrangeTimerSeconds) || 0;
 
   const phaseEndsAt =
@@ -497,7 +508,7 @@ export async function startRound(roomId, user) {
     players,
     status: "arranging",
     roundNumber,
-    pot: minBet * 4,
+    pot: 0,
     results: null,
     phaseEndsAt,
     updatedAt: Date.now()
@@ -516,18 +527,39 @@ export async function startRound(roomId, user) {
       isBot: Boolean(player.isBot),
       hand,
       arrangement: null,
+      fouled: false,
       submitted: false,
       roundNumber,
       updatedAt: Date.now()
     });
 
     if (player.isBot) {
-      const arrangement = botArrangeHand(
-        hand,
-        player.botLevel || room.settings.botLevel || "normal"
-      );
-
-      await submitArrangement(roomId, player.uid, arrangement);
+      const spec = detectSpecial(hand);
+      if (spec) {
+        const sorted = sortCards(hand);
+        await setDoc(
+          handRef(roomId, player.uid),
+          {
+            arrangement: {
+              front: sorted.slice(0, 3),
+              middle: sorted.slice(3, 8),
+              back: sorted.slice(8, 13)
+            },
+            special: spec,
+            fouled: false,
+            submitted: true,
+            updatedAt: Date.now()
+          },
+          { merge: true }
+        );
+        await updatePlayerField(roomId, player.uid, "submitted", true);
+      } else {
+        const arrangement = botArrangeHand(
+          hand,
+          player.botLevel || room.settings.botLevel || "normal"
+        );
+        await submitArrangement(roomId, player.uid, arrangement, false);
+      }
     }
   }
 }
@@ -597,78 +629,134 @@ export async function finishRound(roomId, user) {
 
   if (room.hostId !== user.uid) return;
 
-  if (room.status !== "arranging") return;
+  if (room.status !== "arranging" && room.status !== "scoring") return;
 
-  await updateDoc(roomRef(roomId), {
-    status: "scoring",
-    updatedAt: Date.now()
-  });
-
-  const handsMap = {};
-
-  for (const player of room.players) {
-    const snap = await getDoc(handRef(roomId, player.uid));
-    let data = snap.exists() ? snap.data() : null;
-
-    if (!data) {
-      continue;
-    }
-
-    if (!data.arrangement && data.hand && data.hand.length === 13) {
-      const arrangement = botArrangeHand(
-        data.hand,
-        player.botLevel || room.settings.botLevel || "normal"
-      );
-
-      await submitArrangement(roomId, player.uid, arrangement);
-
-      data.arrangement = arrangement;
-      data.submitted = true;
-    }
-
-    handsMap[player.uid] = data;
+  if (room.status === "arranging") {
+    await updateDoc(roomRef(roomId), { status: "scoring", updatedAt: Date.now() });
   }
 
-  const results = calculateResults(room, handsMap);
+  try {
+    const handsMap = {};
 
-  for (const ranking of results.rankings) {
-    if (ranking.isBot) continue;
+    for (const player of room.players) {
+      const snap = await getDoc(handRef(roomId, player.uid));
+      let data = snap.exists() ? snap.data() : null;
+      if (!data) continue;
 
-    if (ranking.prize > 0) {
-      await adjustCash(
+      if (!data.special && data.hand && data.hand.length === 13) {
+        const spec = detectSpecial(data.hand);
+        if (spec) {
+          const sorted = sortCards(data.hand);
+          data.special = spec;
+          data.arrangement = {
+            front: sorted.slice(0, 3),
+            middle: sorted.slice(3, 8),
+            back: sorted.slice(8, 13)
+          };
+          data.submitted = true;
+          await setDoc(
+            handRef(roomId, player.uid),
+            { arrangement: data.arrangement, special: spec, submitted: true, updatedAt: Date.now() },
+            { merge: true }
+          );
+        }
+      }
+
+      if (!data.arrangement && data.hand && data.hand.length === 13) {
+        const arrangement = botArrangeHand(
+          data.hand,
+          player.botLevel || room.settings.botLevel || "normal"
+        );
+        await submitArrangement(roomId, player.uid, arrangement, false);
+        data.arrangement = arrangement;
+        data.submitted = true;
+      }
+
+      handsMap[player.uid] = data;
+    }
+
+    const results = calculateResults(room, handsMap);
+
+    for (const ranking of results.rankings) {
+      if (ranking.isBot) continue;
+      if (ranking.netCoins !== 0) {
+        await adjustCash(
+          ranking.username,
+          ranking.netCoins,
+          "game_settle",
+          `Room ${roomId} round ${results.roundNumber}`,
+          user.username
+        );
+      }
+      await updateUserStats(
         ranking.username,
-        ranking.prize,
-        "game_win",
-        `Room ${roomId} round ${results.roundNumber}`,
-        user.username
+        ranking.scorePoints,
+        ranking.overallRank === 1 && ranking.scorePoints > 0
       );
     }
 
-    await updateUserStats(
-      ranking.username,
-      ranking.points,
-      ranking.prize > 0
-    );
+    const readyTimerSeconds = Number(room.settings.readyTimerSeconds) || 0;
+    const phaseEndsAt = readyTimerSeconds > 0 ? Date.now() + readyTimerSeconds * 1000 : null;
+    const players = room.players.map((p) => ({ ...p, submitted: true, ready: Boolean(p.isBot) }));
+
+    await updateDoc(roomRef(roomId), {
+      results,
+      players,
+      status: "round_end",
+      phaseEndsAt,
+      updatedAt: Date.now()
+    });
+  } catch (error) {
+    console.error("finishRound failed:", error);
+    // Emergency: force progress to round_end so room doesn't get stuck
+    try {
+      const players = room.players.map((p) => ({ ...p, submitted: true, ready: Boolean(p.isBot) }));
+      await updateDoc(roomRef(roomId), {
+        results: null,
+        players,
+        status: "round_end",
+        phaseEndsAt: null,
+        updatedAt: Date.now()
+      });
+    } catch (e2) {
+      console.error("Emergency progress failed:", e2);
+    }
   }
+}
 
-  const readyTimerSeconds = Number(room.settings.readyTimerSeconds) || 0;
-
-  const phaseEndsAt =
-    readyTimerSeconds > 0
-      ? Date.now() + readyTimerSeconds * 1000
-      : null;
-
-  const players = room.players.map((player) => ({
-    ...player,
-    submitted: true,
-    ready: Boolean(player.isBot)
-  }));
-
-  await updateDoc(roomRef(roomId), {
-    results,
-    players,
-    status: "round_end",
-    phaseEndsAt,
-    updatedAt: Date.now()
+export function listenAllUsers(callback) {
+  return onSnapshot(collection(db, "users"), (snapshot) => {
+    const users = [];
+    snapshot.forEach((docSnap) => {
+      users.push({ username: docSnap.id, ...docSnap.data() });
+    });
+    callback(users);
   });
+}
+
+export function listenAllRooms(callback) {
+  const q = query(
+    collection(db, "rooms"),
+    orderBy("createdAt", "desc"),
+    limit(30)
+  );
+  return onSnapshot(q, (snapshot) => {
+    const rooms = [];
+    snapshot.forEach((d) => rooms.push({ id: d.id, ...d.data() }));
+    callback(rooms);
+  });
+}
+
+export async function spectateRoom(user, code, displayName) {
+  code = String(code || "").trim().toUpperCase();
+  const room = await getRoom(code);
+  if (!room) throw new Error("Room not found.");
+  if (room.players.some((p) => p.uid === user.uid)) return code;
+  if (room.spectators.some((s) => s.uid === user.uid)) return code;
+  const spectators = [
+    ...room.spectators,
+    { uid: user.uid, username: user.username, displayName, joinedAt: Date.now() }
+  ];
+  await updateDoc(roomRef(code), { spectators });
+  return code;
 }

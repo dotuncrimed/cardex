@@ -23,43 +23,6 @@ function* choose(arr, k, start = 0, combo = []) {
   }
 }
 
-function fullSearch(sortedHand) {
-  let best = null;
-
-  for (const back of choose(sortedHand, 5)) {
-    const afterBack = sortedHand.filter((card) => !back.includes(card));
-
-    for (const middle of choose(afterBack, 5)) {
-      const front = afterBack.filter((card) => !middle.includes(card));
-
-      const arrangement = { front, middle, back };
-
-      if (!isLegalArrangement(arrangement)) {
-        continue;
-      }
-
-      const score = arrangementScore(arrangement);
-
-      if (!best || score > best.score) {
-        best = { arrangement, score };
-      }
-    }
-  }
-
-  if (best) {
-    return best;
-  }
-
-  return {
-    arrangement: {
-      front: sortedHand.slice(10),
-      middle: sortedHand.slice(5, 10),
-      back: sortedHand.slice(0, 5)
-    },
-    score: -Infinity
-  };
-}
-
 export function botArrangeHand(hand, difficulty = "normal") {
   const sortedHand = sortCards(hand);
 
@@ -116,7 +79,13 @@ export function botArrangeHand(hand, difficulty = "normal") {
   }
 
   if (!best) {
-    best = fullSearch(sortedHand);
+    best = {
+      arrangement: {
+        front: sortedHand.slice(0, 3),
+        middle: sortedHand.slice(3, 8),
+        back: sortedHand.slice(8, 13)
+      }
+    };
   }
 
   return best.arrangement;

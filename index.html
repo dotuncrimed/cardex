@@ -76,6 +76,14 @@
             <button id="show-join-room-button" class="btn btn-secondary">Join Room</button>
           </div>
 
+          <div class="fp-lobby">
+            <div class="fp-lobby-head">
+              <div class="fp-lobby-title">🎥 Live Tables</div>
+              <div class="fp-lobby-count" id="lobby-room-count">0 live</div>
+            </div>
+            <div id="lobby-rooms-list" class="lobby-rooms-list"></div>
+          </div>
+
           <div id="create-room-form" class="hidden fp-subpanel">
             <h3>Create Room</h3>
             <div class="form-group">
@@ -238,6 +246,14 @@
           </div>
         </div>
 
+        <!-- SPECIAL HAND DECLARE PANEL -->
+        <div id="declare-panel" class="declare-panel hidden">
+          <div class="declare-title" id="declare-title">SPECIAL HAND!</div>
+          <div class="declare-cards" id="declare-cards"></div>
+          <div class="declare-points" id="declare-points"></div>
+          <button id="declare-button" class="ready-btn">DECLARE ✨</button>
+        </div>
+
         <!-- REVEAL / COMPARE LAYER -->
         <div id="reveal-layer" class="reveal-layer hidden">
           <button id="reveal-skip" class="pg-btn hidden">Skip ▸▸</button>
@@ -290,6 +306,15 @@
         <div class="admin-grid">
           <div class="admin-section">
             <h3>Player Management</h3>
+
+            <div class="form-group">
+              <label>Search Users</label>
+              <input id="admin-user-search" type="text" placeholder="Type to filter..." autocomplete="off" />
+            </div>
+
+            <div id="admin-user-list" class="admin-user-list"></div>
+
+            <div class="admin-divider"></div>
 
             <div class="form-group">
               <label>Username</label>

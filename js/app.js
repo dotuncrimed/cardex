@@ -32,7 +32,11 @@ import {
   adjustCash,
   setCash,
   updateDisplayName,
-  addAdminLog
+  addAdminLog,
+  listenAllUsers,
+  declareSpecial,
+  listenAllRooms,
+  spectateRoom
 } from "./db.js";
 
 const state = {
@@ -67,6 +71,12 @@ const state = {
   cashMap: {},
   cashListeners: {},
   coinsFlyedFor: null,
+  adminUsers: [],
+  adminUnsub: null,
+  adminSearch: "",
+  adminSelectedUsername: null,
+  allRooms: [],
+  roomsUnsub: null,
 };
 
 function $(selector) {
@@ -203,8 +213,170 @@ function setAdminMessage(message) {
   $("#admin-message").textContent = message || "";
 }
 
+function renderAdminUserList() {
+  const list = $("#admin-user-list");
+  if (!list) return;
+  list.innerHTML = "";
+
+  const q = (state.adminSearch || "").trim().toLowerCase();
+
+  const users = [...state.adminUsers]
+    .filter((u) =>
+      !q ||
+      (u.username || "").includes(q) ||
+      (u.displayName || "").toLowerCase().includes(q)
+    )
+    .sort((a, b) => (Number(b.cash) || 0) - (Number(a.cash) || 0));
+
+  if (users.length === 0) {
+    list.innerHTML = '<div class="admin-empty">No users found.</div>';
+    return;
+  }
+
+  users.forEach((u) => {
+    const row = document.createElement("div");
+    row.className =
+      "admin-user-row" +
+      (u.username === state.adminSelectedUsername ? " selected" : "");
+
+    const info = document.createElement("div");
+    info.className = "admin-user-info-wrap";
+    info.innerHTML = `
+      <div class="admin-user-avatar">${(u.displayName || u.username || "?").charAt(0).toUpperCase()}</div>
+      <div class="admin-user-info">
+        <div class="admin-user-name">${u.displayName || u.username}
+          <span class="admin-user-username">@${u.username}</span>
+        </div>
+        <div class="admin-user-stats">
+          Cash ${formatCash(u.cash || 0)} • Games ${u.games || 0} •
+          Wins ${u.wins || 0} • Pts ${u.points || 0}
+        </div>
+      </div>
+    `;
+
+    const btn = document.createElement("button");
+    btn.className = "pg-btn";
+    btn.textContent = "Edit";
+    btn.addEventListener("click", () => selectAdminUser(u.username));
+
+    row.appendChild(info);
+    row.appendChild(btn);
+    list.appendChild(row);
+  });
+}
+
+function selectAdminUser(username) {
+  state.adminSelectedUsername = username;
+
+  const u = state.adminUsers.find((x) => x.username === username);
+
+  const usernameField = $("#admin-player-username");
+  if (usernameField) usernameField.value = username;
+
+  if (u) {
+    const infoBox = $("#admin-player-info");
+    if (infoBox) {
+      infoBox.innerHTML = `
+        <div>Username: ${u.username}</div>
+        <div>Display Name: ${u.displayName || "-"}</div>
+        <div>Cash: ${u.cash || 0}</div>
+        <div>Games: ${u.games || 0}</div>
+        <div>Wins: ${u.wins || 0}</div>
+        <div>Points: ${u.points || 0}</div>
+      `;
+    }
+    const nameField = $("#admin-display-name");
+    if (nameField) nameField.value = u.displayName || "";
+    const cashField = $("#admin-cash-amount");
+    if (cashField) cashField.value = u.cash || 0;
+  }
+
+  renderAdminUserList();
+  setAdminMessage("Selected @" + username + " for editing.");
+}
+
 function emptyArrangement() {
   return { front: [], middle: [], back: [] };
+}
+
+function statusInfo(status) {
+  if (status === "lobby") return { label: "Waiting", cls: "st-waiting" };
+  if (status === "arranging" || status === "scoring") return { label: "Playing", cls: "st-playing" };
+  return { label: "Round End", cls: "st-roundend" };
+}
+
+function timeAgo(ts) {
+  const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return s + "s ago";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h ago";
+  return Math.floor(h / 24) + "d ago";
+}
+
+function renderRoomList() {
+  const list = $("#lobby-rooms-list");
+  if (!list) return;
+  list.innerHTML = "";
+
+  const countEl = $("#lobby-room-count");
+  if (countEl) countEl.textContent = state.allRooms.length + " live";
+
+  if (state.allRooms.length === 0) {
+    list.innerHTML = '<div class="lobby-empty">No live tables yet. Create one!</div>';
+    return;
+  }
+
+  state.allRooms.forEach((room) => {
+    const st = statusInfo(room.status);
+    const players = [...(room.players || [])].sort((a, b) => a.seat - b.seat);
+    const playing = room.status === "arranging" || room.status === "scoring";
+    const canJoin = ["lobby", "round_end"].includes(room.status) && players.length < 4;
+
+    const seatsHtml = [0, 1, 2, 3].map((seat) => {
+      const p = players.find((x) => x.seat === seat);
+      if (!p) return '<div class="lobby-seat empty">+</div>';
+      return `<div class="lobby-seat${p.isBot ? " bot" : ""}" title="${p.displayName}">${(p.displayName || "?").charAt(0).toUpperCase()}</div>`;
+    }).join("");
+
+    const card = document.createElement("div");
+    card.className = "lobby-room-card " + st.cls;
+    card.innerHTML = `
+      <div class="lobby-card-head">
+        <span class="lobby-code">${room.roomCode}</span>
+        <span class="lobby-status ${st.cls}">${playing ? '<span class="pulse-dot"></span>' : ""}${st.label}</span>
+      </div>
+      <div class="lobby-seats">${seatsHtml}</div>
+      <div class="lobby-meta">
+        <span>👥 ${players.length}/4</span>
+        <span>🔄 Round ${room.roundNumber || 0}</span>
+        <span>💰 ${formatCash(room.settings?.minBet || 0)}</span>
+      </div>
+      <div class="lobby-meta lobby-time">🕑 ${timeAgo(room.createdAt)}</div>
+      <div class="lobby-actions">
+        <button class="pg-btn" data-room-action="watch" data-code="${room.roomCode}">🎥 Watch</button>
+        ${canJoin ? `<button class="pg-btn primary" data-room-action="join" data-code="${room.roomCode}">Join</button>` : ""}
+      </div>
+    `;
+    list.appendChild(card);
+  });
+}
+
+function syncRoomsListener() {
+  const shouldListen = Boolean(state.user) && !state.roomId;
+
+  if (shouldListen && !state.roomsUnsub) {
+    state.roomsUnsub = listenAllRooms((rooms) => {
+      state.allRooms = rooms;
+      renderRoomList();
+    });
+  }
+
+  if (!shouldListen && state.roomsUnsub) {
+    state.roomsUnsub();
+    state.roomsUnsub = null;
+  }
 }
 
 function assignedCardsSet() {
@@ -280,6 +452,7 @@ async function enterRoom(roomId) {
     if (!snapshot.exists()) {
       clearRoomState();
       showScreen("menu");
+      syncRoomsListener();
       return;
     }
 
@@ -288,6 +461,7 @@ async function enterRoom(roomId) {
     hostController();
   });
 
+  syncRoomsListener();
   showScreen("room");
 }
 
@@ -348,6 +522,7 @@ function renderSeats() {
 
   const myPlayer = currentUserPlayerObject();
   const mySeat = myPlayer ? myPlayer.seat : 0;
+  const minBet = Number(state.room.settings.minBet) || 0;
 
   state.room.players.forEach((player) => {
     const pos = SEAT_POS[seatOffset(player.seat, mySeat)];
@@ -355,6 +530,15 @@ function renderSeats() {
     if (!el) return;
 
     const isSelf = player.uid === state.user.uid;
+
+    let cashVal;
+    if (player.isBot) {
+      cashVal = state.cashMap[player.uid] ?? minBet * 10;
+    } else if (isSelf) {
+      cashVal = state.cashMap[player.username] ?? state.userData?.cash ?? 0;
+    } else {
+      cashVal = state.cashMap[player.username] ?? 0;
+    }
 
     let status = "";
     if (["arranging", "scoring"].includes(state.room.status)) {
@@ -365,8 +549,9 @@ function renderSeats() {
 
     el.innerHTML = `
       <div class="avatar">${(player.displayName || "?").charAt(0).toUpperCase()}</div>
-      <div class="coin-pill">${isSelf ? (state.userData?.cash ?? 0) : player.displayName}</div>
-      <div class="seat-status">${status}${player.isBot ? " 🤖" : ""}</div>
+      <div class="seat-name">${player.displayName}${isSelf ? " (You)" : ""}${player.isBot ? " 🤖" : ""}</div>
+      <div class="coin-pill">${formatCash(cashVal)}</div>
+      <div class="seat-status">${status}</div>
     `;
   });
 }
@@ -518,7 +703,7 @@ function renderRoomInfo() {
   if (roundEl) roundEl.textContent = "Round " + (state.room.roundNumber || 0);
 
   const potEl = $("#pg-pot");
-  if (potEl) potEl.textContent = "Pot " + (state.room.pot || 0);
+  if (potEl) potEl.textContent = "1 pt = " + (state.room.settings.minBet || 0);
 
   const hudCash = $("#hud-cash");
   if (hudCash) hudCash.textContent = state.userData?.cash ?? 0;
@@ -1003,14 +1188,15 @@ async function submitHumanArrangement() {
     return;
   }
 
-  if (!isLegalArrangement(arrangement)) {
-    setRoomMessage("Illegal arrangement. Back must beat Middle, Middle must beat Front.");
-    return;
+  const isFouled = !isLegalArrangement(arrangement);
+  
+  if (isFouled) {
+    setRoomMessage("FOUL! Your arrangement is illegal. You will auto-lose this round.");
   }
 
   try {
-    await submitArrangement(state.roomId, state.user.uid, arrangement);
-    setRoomMessage("Submitted.");
+    await submitArrangement(state.roomId, state.user.uid, arrangement, isFouled);
+    setRoomMessage(isFouled ? "Fouled arrangement submitted." : "Submitted.");
   } catch (error) {
     console.error(error);
     setRoomMessage("Submit failed.");
@@ -1025,25 +1211,28 @@ async function autoSubmitIfNeeded() {
   if (state.handData.submitted) return;
   if (!state.room.phaseEndsAt) return;
   if (Date.now() < state.room.phaseEndsAt) return;
+  if (Date.now() < (state.autoSubmitFailUntil || 0)) return;
 
   state.autoSubmitting = true;
 
   try {
-    let arrangement = state.arrangement;
+    const arrangement = state.arrangement;
 
-    const isValid =
+    const countsOk =
       arrangement.front.length === 3 &&
       arrangement.middle.length === 5 &&
-      arrangement.back.length === 5 &&
-      isLegalArrangement(arrangement);
+      arrangement.back.length === 5;
 
-    if (!isValid) {
-      arrangement = botArrangeHand(state.handData.hand, "hard");
+    if (countsOk) {
+      const fouled = !isLegalArrangement(arrangement);
+      await submitArrangement(state.roomId, state.user.uid, arrangement, fouled);
+    } else {
+      const fixed = botArrangeHand(state.handData.hand, "normal");
+      await submitArrangement(state.roomId, state.user.uid, fixed, false);
     }
-
-    await submitArrangement(state.roomId, state.user.uid, arrangement);
   } catch (error) {
     console.error(error);
+    state.autoSubmitFailUntil = Date.now() + 5000;
   } finally {
     state.autoSubmitting = false;
   }
@@ -1090,15 +1279,17 @@ function renderResultBoards(results) {
 
     const head = document.createElement("div");
     head.className = "pg-board-head";
-    head.textContent =
-      `${index + 1}. ${ranking.displayName}` +
-      `${ranking.isBot ? " (Bot)" : ""} — ${ranking.points} wins`;
-
+    
+    let headText = `${index + 1}. ${ranking.displayName}`;
+    headText += `${ranking.isBot ? " (Bot)" : ""} — ${ranking.scorePoints} pts`;
+    if (ranking.scoops > 0) headText += ` • 🏠 ${ranking.scoops} Scoop${ranking.scoops > 1 ? "s" : ""}`;
+    if (ranking.royalties > 0) headText += ` • 💎 +${ranking.royalties} Royalty`;
+    if (ranking.fouled) headText += ` • FOUL`;
+    
+    head.textContent = headText;
     board.appendChild(head);
 
-    const arrangement = results.arrangements
-      ? results.arrangements[ranking.uid]
-      : null;
+    const arrangement = results.arrangements ? results.arrangements[ranking.uid] : null;
 
     if (arrangement) {
       board.appendChild(createCombinationBlock("Front", arrangement.front));
@@ -1109,9 +1300,7 @@ function renderResultBoards(results) {
     if (!ranking.isBot) {
       const net = document.createElement("div");
       net.className = "pg-board-net";
-      net.textContent =
-        `Bet ${ranking.bet} • Prize ${ranking.prize} • ` +
-        `Net ${ranking.net >= 0 ? "+" : ""}${ranking.net}`;
+      net.textContent = `Net ${ranking.netCoins >= 0 ? "+" : ""}${ranking.netCoins} coins`;
       board.appendChild(net);
     }
 
@@ -1134,9 +1323,7 @@ function renderResultsSection() {
   }
 
   resultSummary.textContent =
-    `Round ${results.roundNumber} | ` +
-    `Pot ${results.pot} | ` +
-    `Winner = most opponents beaten`;
+    `Round ${results.roundNumber} | 1 pt = ${results.minBet} | Winner = most points`;
 
   resultTable.innerHTML = "";
 
@@ -1237,24 +1424,72 @@ function renderReadyArea() {
 
   if (!state.room || state.room.status !== "round_end") return;
 
+  const results = state.room.results;
   const players = [...state.room.players].sort((a, b) => a.seat - b.seat);
 
   const title = document.createElement("h4");
-  title.textContent = "Next Round Status";
+  title.textContent = "Round Results & Next Round Status";
   title.style.margin = "0 0 10px 0";
   readyList.appendChild(title);
 
+  // Build a map of player rankings
+  const rankMap = {};
+  if (results && results.rankings) {
+    results.rankings.forEach((r, idx) => {
+      rankMap[r.uid] = {
+        rank: idx + 1,
+        points: r.scorePoints,
+        net: r.netCoins,
+        prize: r.prize,
+        fouled: r.fouled,
+        scoops: r.scoops || 0,
+        royalties: r.royalties || 0,
+        isWinner: idx === 0
+      };
+    });
+  }
+
   players.forEach((player) => {
     const div = document.createElement("div");
-    div.className = `player-row ready-status-row ${player.ready ? "ready" : "not-ready"}`;
+    const rankInfo = rankMap[player.uid];
+    const isWinner = rankInfo && rankInfo.isWinner;
+    const isFouled = rankInfo && rankInfo.fouled;
+    
+    div.className = `player-row ready-status-row ${player.ready ? "ready" : "not-ready"} ${isWinner ? "winner" : ""} ${isFouled ? "fouled" : ""}`;
 
-    const icon = player.ready ? "✅" : "❌";
+    const readyIcon = player.ready ? "✅" : "❌";
     const statusText = player.ready ? "Ready" : "Waiting...";
     const youText = (state.user && player.uid === state.user.uid) ? " (You)" : "";
+    
+    let rankBadge = "";
+    if (rankInfo) {
+      if (isWinner) {
+        rankBadge = `<span class="winner-badge">🏆 WINNER</span>`;
+      } else if (isFouled) {
+        rankBadge = `<span class="foul-badge">FOUL</span>`;
+      } else {
+        const ordinal = rankInfo.rank === 1 ? "st" : rankInfo.rank === 2 ? "nd" : rankInfo.rank === 3 ? "rd" : "th";
+        rankBadge = `<span class="rank-badge">${rankInfo.rank}${ordinal} • ${rankInfo.points} pts</span>`;
+      }
+      
+      if (rankInfo.scoops > 0) {
+        rankBadge += `<span class="scoop-badge">🏠 ${rankInfo.scoops}</span>`;
+      }
+      
+      if (rankInfo.royalties > 0) {
+        rankBadge += `<span class="royalty-badge">💎 +${rankInfo.royalties}</span>`;
+      }
+      
+      if (!player.isBot) {
+        const netStr = rankInfo.net >= 0 ? `+${rankInfo.net}` : `${rankInfo.net}`;
+        rankBadge += `<span class="net-badge">${netStr}</span>`;
+      }
+    }
 
     div.innerHTML = `
-      <span class="ready-icon">${icon}</span>
+      <span class="ready-icon">${readyIcon}</span>
       <span class="player-name">${player.displayName}${youText}</span>
+      <div class="player-badges">${rankBadge}</div>
       <span class="ready-text">${statusText}</span>
     `;
 
@@ -1321,6 +1556,7 @@ function renderRoom() {
 
   renderRoomInfo();
   renderSeats();
+  syncCashListeners();
   renderOpponentClusters();
   renderLobbySection();
   manageHandListener();
@@ -1410,6 +1646,24 @@ async function hostController() {
     state.hostFailCount = 0;
   };
 
+  if (room.status === "scoring") {
+    const stuckFor = Date.now() - (room.updatedAt || 0);
+    if (stuckFor > 20000) {
+      console.warn("Scoring stuck for 20s, retrying finishRound");
+      state.hostBusy = true;
+      try {
+        await finishRound(room.roomCode, state.user);
+        succeed();
+      } catch (error) {
+        console.error(error);
+        fail();
+      } finally {
+        state.hostBusy = false;
+      }
+    }
+    return;
+  }
+
   if (room.status === "arranging") {
     const allSubmitted = room.players.every((p) => p.submitted);
     if (allSubmitted) {
@@ -1492,6 +1746,31 @@ function showAdminScreen() {
   }
 
   loadAdminRoomSettings();
+
+  if (!state.adminUnsub) {
+    state.adminUnsub = listenAllUsers((users) => {
+      state.adminUsers = users;
+      renderAdminUserList();
+
+      if (state.adminSelectedUsername) {
+        const u = users.find((x) => x.username === state.adminSelectedUsername);
+        if (u) {
+          const infoBox = $("#admin-player-info");
+          if (infoBox) {
+            infoBox.innerHTML = `
+              <div>Username: ${u.username}</div>
+              <div>Display Name: ${u.displayName || "-"}</div>
+              <div>Cash: ${u.cash || 0}</div>
+              <div>Games: ${u.games || 0}</div>
+              <div>Wins: ${u.wins || 0}</div>
+              <div>Points: ${u.points || 0}</div>
+            `;
+          }
+        }
+      }
+    });
+  }
+
   showScreen("admin");
 }
 
@@ -1516,6 +1795,7 @@ watchAuth((user) => {
   });
 
   renderMenu();
+  syncRoomsListener();
 
   if (state.roomId) {
     enterRoom(state.roomId);
@@ -1664,6 +1944,7 @@ async function exitToMenu() {
   }
   clearRoomState();
   showScreen("menu");
+  syncRoomsListener();
 }
 
 $("#leave-room-button").addEventListener("click", exitToMenu);
@@ -1744,6 +2025,11 @@ $("#admin-button").addEventListener("click", showAdminScreen);
 $("#room-admin-button").addEventListener("click", showAdminScreen);
 
 $("#admin-back-button").addEventListener("click", () => {
+  if (state.adminUnsub) {
+    state.adminUnsub();
+    state.adminUnsub = null;
+  }
+
   if (state.roomId) {
     showScreen("room");
   } else {
@@ -1941,17 +2227,24 @@ if (openZoomBtn) {
 }
 
 const readyArrangeBtn = document.getElementById("ready-arrange-button");
-if (readyArrangeBtn) {
+if (readyArrangeBtn && !readyArrangeBtn.dataset.bound) {
+  readyArrangeBtn.dataset.bound = "true";
   readyArrangeBtn.addEventListener("click", () => {
     const a = state.arrangement;
-    if (a.front.length !== 3 || a.middle.length !== 5 || a.back.length !== 5) {
+
+    if (
+      a.front.length !== 3 ||
+      a.middle.length !== 5 ||
+      a.back.length !== 5
+    ) {
       setRoomMessage("You need Front 3, Middle 5, Back 5.");
       return;
     }
+
     if (!isLegalArrangement(a)) {
-      setRoomMessage("Illegal arrangement. Back must beat Middle, Middle must beat Front.");
-      return;
+      setRoomMessage("Warning: Fouled arrangement. Submitting it will auto-lose the round.");
     }
+
     state.zoomOpen = false;
     renderArrangeSection();
   });
@@ -1970,3 +2263,41 @@ if (swapMidBackBtn && !swapMidBackBtn.dataset.bound) {
     }
   });
 }
+
+const adminSearchField = document.getElementById("admin-user-search");
+if (adminSearchField && !adminSearchField.dataset.bound) {
+  adminSearchField.dataset.bound = "true";
+  adminSearchField.addEventListener("input", (e) => {
+    state.adminSearch = e.target.value;
+    renderAdminUserList();
+  });
+}
+
+document.addEventListener("click", async (event) => {
+  const btn = event.target.closest("[data-room-action]");
+  if (!btn) return;
+
+  const code = btn.dataset.code;
+  const action = btn.dataset.roomAction;
+  const name = state.userData?.displayName || state.user.username;
+
+  try {
+    if (action === "watch") {
+      await spectateRoom(state.user, code, name);
+    } else {
+      await joinRoomByCode(state.user, code, name);
+    }
+    await enterRoom(code);
+  } catch (error) {
+    console.error(error);
+    const err = $("#join-room-error");
+    if (err) err.textContent = error.message || "Could not enter room.";
+  }
+});
+
+setInterval(() => {
+  const menu = $("#menu-screen");
+  if (menu && !menu.classList.contains("hidden")) {
+    renderRoomList();
+  }
+}, 30000);

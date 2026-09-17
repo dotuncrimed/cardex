@@ -895,3 +895,317 @@ button:active { transform: scale(0.97); }
 
 /* Exit Button Style */
 #exit-room-button, #join-game-button { background: #ff5252; color: white; }
+
+.player-row.winner {
+  background: linear-gradient(90deg, rgba(255, 215, 0, 0.15), rgba(255, 215, 0, 0.05));
+  border: 2px solid #ffd700;
+}
+
+.player-row.fouled {
+  background: rgba(255, 82, 82, 0.1);
+  border: 2px solid #ff5252;
+  opacity: 0.7;
+}
+
+.player-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.winner-badge {
+  background: linear-gradient(145deg, #ffd700, #ff9800);
+  color: #332000;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 11px;
+  box-shadow: 0 2px 0 #b26a00;
+  animation: winnerPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes winnerPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.foul-badge {
+  background: #ff5252;
+  color: #fff;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 11px;
+  box-shadow: 0 2px 0 #c62828;
+}
+
+.rank-badge {
+  background: rgba(255, 255, 255, 0.15);
+  color: #e0f2f1;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.net-badge {
+  background: rgba(38, 166, 154, 0.3);
+  color: #80cbc4;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.net-badge:contains("-") {
+  background: rgba(255, 82, 82, 0.3);
+  color: #ff8a80;
+}
+
+.scoop-badge {
+  background: linear-gradient(145deg, #4caf50, #2e7d32);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 11px;
+  box-shadow: 0 2px 0 #1b5e20;
+}
+
+.royalty-badge {
+  background: linear-gradient(145deg, #9c27b0, #6a1b9a);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 11px;
+  box-shadow: 0 2px 0 #4a148c;
+}
+
+.admin-user-list {
+  max-height: 320px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.admin-user-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.admin-user-row.selected {
+  border-color: #ffd54f;
+  background: rgba(255, 213, 79, 0.12);
+}
+
+.admin-user-info-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.admin-user-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #ffd54f, #ff9800);
+  color: #332000;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.admin-user-info { flex: 1; }
+
+.admin-user-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.admin-user-username {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.admin-user-stats {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.admin-empty {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  padding: 8px;
+}
+
+.admin-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.15);
+  margin: 14px 0;
+}
+
+.seat-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.fp-lobby {
+  margin-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 14px;
+}
+
+.fp-lobby-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.fp-lobby-title {
+  font-weight: 900;
+  font-size: 16px;
+  color: #ffd54f;
+  letter-spacing: 1px;
+}
+
+.fp-lobby-count {
+  background: rgba(38, 166, 154, 0.9);
+  color: #e0f2f1;
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.lobby-rooms-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  max-height: 300px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+@media (min-width: 700px) {
+  .lobby-rooms-list { grid-template-columns: 1fr 1fr; }
+}
+
+.lobby-empty {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+  text-align: center;
+  padding: 18px 0;
+}
+
+.lobby-room-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.lobby-room-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.lobby-room-card.st-playing { border-color: rgba(255, 213, 79, 0.5); }
+
+.lobby-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lobby-code {
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #fff;
+}
+
+.lobby-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.lobby-status.st-waiting { background: rgba(124, 255, 178, 0.18); color: #7cffb2; }
+.lobby-status.st-playing { background: rgba(255, 213, 79, 0.2); color: #ffd54f; }
+.lobby-status.st-roundend { background: rgba(129, 212, 250, 0.2); color: #81d4fa; }
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ffd54f;
+  animation: pulseDot 1.2s ease-in-out infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+
+.lobby-seats { display: flex; gap: 6px; }
+
+.lobby-seat {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #ffd54f, #ff9800);
+  color: #332000;
+  font-weight: 900;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+}
+
+.lobby-seat.bot { background: linear-gradient(145deg, #90a4ae, #607d8b); color: #fff; }
+.lobby-seat.empty {
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px dashed rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.lobby-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  flex-wrap: wrap;
+}
+
+.lobby-time { color: rgba(255, 255, 255, 0.55); }
+
+.lobby-actions { display: flex; gap: 8px; }
