@@ -32,10 +32,3 @@ For real cash, move wallet, payout, admin, and bot logic into Firebase Cloud Fun
 5. Paste into `/js/config.js`.
 6. Publish `/firestore.rules`.
 7. Deploy to GitHub Pages.
-
-## Admin Password
-
-Default admin password:
-
-```text
-adminpogi
