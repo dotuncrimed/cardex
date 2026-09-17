@@ -76,6 +76,9 @@
             <button id="show-join-room-button" class="btn btn-secondary">Join Room</button>
           </div>
 
+          <button id="claim-daily-button" class="btn btn-primary btn-block daily-claim-btn">🎁 Claim Daily +10,000</button>
+          <p id="menu-message" class="message"></p>
+
           <div class="fp-lobby">
             <div class="fp-lobby-head">
               <div class="fp-lobby-title">🎥 Live Tables</div>
@@ -128,6 +131,30 @@
               <button id="cancel-join-room-button" class="btn btn-ghost">Cancel</button>
             </div>
             <p id="join-room-error" class="error"></p>
+          </div>
+
+          <button id="show-send-money-button" class="btn btn-ghost btn-block">💸 Send Money</button>
+
+          <div id="send-money-form" class="hidden fp-subpanel">
+            <h3>Send Money</h3>
+            <div class="form-group">
+              <label>Recipient Username</label>
+              <input id="send-username" type="text" maxlength="20" autocomplete="off" placeholder="username" />
+            </div>
+            <div class="form-group">
+              <label>Amount</label>
+              <input id="send-amount" type="number" min="1" placeholder="0" />
+            </div>
+            <div class="form-group">
+              <label>Note (optional)</label>
+              <input id="send-note" type="text" maxlength="40" placeholder="optional note" />
+            </div>
+            <div class="pg-actions">
+              <button id="send-money-button" class="btn btn-primary">Send</button>
+              <button id="cancel-send-money-button" class="btn btn-ghost">Cancel</button>
+            </div>
+            <p id="send-money-error" class="error"></p>
+            <p id="send-money-message" class="message"></p>
           </div>
 
           <div class="fp-menu-foot">

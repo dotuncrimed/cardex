@@ -1515,3 +1515,35 @@ html, body { overflow-x: hidden; }
   .ready-area { max-height: 60%; }
   .seat-status { display: none; }
 }
+
+
+/* =========================
+   ECONOMY FEATURES
+========================= */
+
+.daily-claim-btn:not(:disabled) {
+  animation: claimPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes claimPulse {
+  0%, 100% { box-shadow: 0 3px 0 #b26a00, 0 0 0 0 rgba(255, 213, 79, 0.5); }
+  50% { box-shadow: 0 3px 0 #b26a00, 0 0 0 12px rgba(255, 213, 79, 0); }
+}
+
+.daily-claim-btn:disabled {
+  opacity: 0.55;
+  animation: none;
+}
+
+.fp-subpanel {
+  margin-top: 14px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btn-block {
+  width: 100%;
+  margin: 8px 0;
+}

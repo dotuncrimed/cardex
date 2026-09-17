@@ -37,7 +37,9 @@ import {
   declareSpecial,
   listenAllRooms,
   spectateRoom,
-  sweepStaleRooms
+  sweepStaleRooms,
+  claimDailyBonus,
+  transferCash
 } from "./db.js";
 
 const state = {
@@ -477,6 +479,16 @@ function renderMenu() {
   if (avatarEl) {
     const name = state.userData?.displayName || state.user.username || "?";
     avatarEl.textContent = name.charAt(0).toUpperCase();
+  }
+
+  const claimBtn = $("#claim-daily-button");
+  if (claimBtn) {
+    const today = new Date().toISOString().slice(0, 10);
+    const claimed = state.userData?.lastClaimDate === today;
+    claimBtn.disabled = claimed;
+    claimBtn.textContent = claimed
+      ? "✓ Claimed — back tomorrow"
+      : "🎁 Claim Daily +10,000";
   }
 }
 
@@ -2303,3 +2315,64 @@ setInterval(() => {
     renderRoomList();
   }
 }, 30000);
+
+// Daily bonus and transfer listeners
+const claimDailyBtn = document.getElementById("claim-daily-button");
+if (claimDailyBtn && !claimDailyBtn.dataset.bound) {
+  claimDailyBtn.dataset.bound = "true";
+  claimDailyBtn.addEventListener("click", async () => {
+    if (!state.user) return;
+    const msg = $("#menu-message");
+    try {
+      await claimDailyBonus(state.user.username);
+      if (msg) msg.textContent = "🎉 +10,000 coins claimed!";
+    } catch (error) {
+      if (msg) msg.textContent = error.message || "Claim failed.";
+    }
+  });
+}
+
+const showSendMoneyBtn = document.getElementById("show-send-money-button");
+if (showSendMoneyBtn) {
+  showSendMoneyBtn.addEventListener("click", () => {
+    $("#send-money-form").classList.remove("hidden");
+  });
+}
+
+const cancelSendMoneyBtn = document.getElementById("cancel-send-money-button");
+if (cancelSendMoneyBtn) {
+  cancelSendMoneyBtn.addEventListener("click", () => {
+    $("#send-money-form").classList.add("hidden");
+  });
+}
+
+const sendMoneyBtn = document.getElementById("send-money-button");
+if (sendMoneyBtn) {
+  sendMoneyBtn.addEventListener("click", async () => {
+    const errEl = $("#send-money-error");
+    const okEl = $("#send-money-message");
+    errEl.textContent = "";
+    okEl.textContent = "";
+
+    const to = $("#send-username").value.trim().toLowerCase();
+    const amount = Number($("#send-amount").value);
+    const note = $("#send-note").value.trim();
+
+    if (!to || !amount || amount <= 0) {
+      errEl.textContent = "Enter a username and a positive amount.";
+      return;
+    }
+
+    if (!confirm("Send " + formatCash(amount) + " coins to @" + to + "?")) return;
+
+    try {
+      await transferCash(state.user.username, to, amount, note);
+      okEl.textContent = "✅ Sent " + formatCash(amount) + " to @" + to;
+      $("#send-username").value = "";
+      $("#send-amount").value = "";
+      $("#send-note").value = "";
+    } catch (error) {
+      errEl.textContent = error.message || "Transfer failed.";
+    }
+  });
+}

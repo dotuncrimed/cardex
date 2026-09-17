@@ -11,7 +11,8 @@ import {
   deleteDoc,
   query,
   orderBy,
-  limit
+  limit,
+  runTransaction
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 import { buildDeck, shuffle, sortCards } from "./cards.js";
@@ -813,4 +814,90 @@ export async function sweepStaleRooms(rooms, excludeUid) {
       console.warn("Sweep failed for room:", room.roomCode, error);
     }
   }
+}
+
+export const DAILY_BONUS = 10000;
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export async function claimDailyBonus(username) {
+  const userRef = doc(db, "users", username);
+  const today = todayKey();
+
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(userRef);
+    if (!snap.exists()) throw new Error("User not found.");
+
+    const data = snap.data();
+    if (data.lastClaimDate === today) {
+      throw new Error("Already claimed today. Come back tomorrow!");
+    }
+
+    const currentCash = Number(data.cash) || 0;
+    const newCash = currentCash + DAILY_BONUS;
+
+    tx.update(userRef, {
+      cash: newCash,
+      lastClaimDate: today,
+      updatedAt: Date.now()
+    });
+
+    tx.set(doc(db, "users", username, "transactions", today + "_daily"), {
+      type: "daily_bonus",
+      amount: DAILY_BONUS,
+      balanceAfter: newCash,
+      note: "Daily login bonus",
+      admin: null,
+      createdAt: Date.now()
+    });
+
+    return newCash;
+  });
+}
+
+export async function transferCash(fromUsername, toUsername, amount, note) {
+  amount = Math.floor(Number(amount));
+  if (!amount || amount <= 0) throw new Error("Enter a positive amount.");
+  if (fromUsername === toUsername) throw new Error("Cannot send to yourself.");
+
+  const fromRef = doc(db, "users", fromUsername);
+  const toRef = doc(db, "users", toUsername);
+
+  return runTransaction(db, async (tx) => {
+    const fromSnap = await tx.get(fromRef);
+    const toSnap = await tx.get(toRef);
+    if (!fromSnap.exists()) throw new Error("Sender not found.");
+    if (!toSnap.exists()) throw new Error("Recipient not found.");
+
+    const fromCash = Number(fromSnap.data().cash) || 0;
+    if (fromCash < amount) throw new Error("Not enough cash.");
+
+    const newFrom = fromCash - amount;
+    const newTo = (Number(toSnap.data().cash) || 0) + amount;
+
+    tx.update(fromRef, { cash: newFrom, updatedAt: Date.now() });
+    tx.update(toRef, { cash: newTo, updatedAt: Date.now() });
+
+    const ts = Date.now();
+    tx.set(doc(db, "users", fromUsername, "transactions", "out_" + ts), {
+      type: "transfer_out",
+      amount: -amount,
+      balanceAfter: newFrom,
+      note: note || "",
+      to: toUsername,
+      createdAt: ts
+    });
+    tx.set(doc(db, "users", toUsername, "transactions", "in_" + ts), {
+      type: "transfer_in",
+      amount: amount,
+      balanceAfter: newTo,
+      note: note || "",
+      from: fromUsername,
+      createdAt: ts
+    });
+
+    return newFrom;
+  });
 }
