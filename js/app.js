@@ -476,6 +476,16 @@ function renderMenu() {
     const name = state.userData?.displayName || state.user.username || "?";
     avatarEl.textContent = name.charAt(0).toUpperCase();
   }
+
+  const claimBtn = $("#claim-daily-button");
+  if (claimBtn) {
+    const today = new Date().toISOString().slice(0, 10);
+    const claimed = state.userData?.lastClaimDate === today;
+    claimBtn.disabled = claimed;
+    claimBtn.textContent = claimed
+      ? "✓ Claimed — back tomorrow"
+      : "🎁 Claim Daily +10,000";
+  }
 }
 
 function makeCardElement(card, selected = false) {

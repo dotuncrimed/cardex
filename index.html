@@ -129,6 +129,30 @@
             <p id="join-room-error" class="error"></p>
           </div>
 
+          <button id="show-send-money-button" class="btn btn-ghost btn-block">💸 Send Money</button>
+
+          <div id="send-money-form" class="hidden fp-subpanel">
+            <h3>Send Money</h3>
+            <div class="form-group">
+              <label>Recipient Username</label>
+              <input id="send-username" type="text" maxlength="20" autocomplete="off" placeholder="username" />
+            </div>
+            <div class="form-group">
+              <label>Amount</label>
+              <input id="send-amount" type="number" min="1" placeholder="0" />
+            </div>
+            <div class="form-group">
+              <label>Note (optional)</label>
+              <input id="send-note" type="text" maxlength="40" placeholder="optional note" />
+            </div>
+            <div class="pg-actions">
+              <button id="send-money-button" class="btn btn-primary">Send</button>
+              <button id="cancel-send-money-button" class="btn btn-ghost">Cancel</button>
+            </div>
+            <p id="send-money-error" class="error"></p>
+            <p id="send-money-message" class="message"></p>
+          </div>
+
           <div class="fp-menu-foot">
             <button id="admin-button" class="btn btn-ghost">Admin</button>
             <button id="logout-button" class="btn btn-ghost">Logout</button>
@@ -263,13 +287,6 @@
           <div class="reveal-slot reveal-right" id="reveal-right"></div>
           <div class="reveal-slot reveal-bottom" id="reveal-bottom"></div>
 
-          <div class="score-panel" id="score-panel">
-            <div class="sp-row"><span>Front:</span><span id="sp-front"></span></div>
-            <div class="sp-row"><span>Mid:</span><span id="sp-mid"></span></div>
-            <div class="sp-row"><span>Back:</span><span id="sp-back"></span></div>
-            <div class="sp-row sp-total"><span>Total:</span><span id="sp-total"></span></div>
-          </div>
-
           <div id="ready-area" class="ready-area hidden">
             <div id="ready-list" class="pg-ready-list"></div>
             <div class="pg-actions">
@@ -279,6 +296,13 @@
               <button id="view-results-button" class="pg-btn">View Full Results</button>
               <button id="exit-room-button" class="pg-btn">Exit Room</button>
             </div>
+          </div>
+
+          <div class="score-panel" id="score-panel">
+            <div class="sp-row"><span>Front:</span><span id="sp-front"></span></div>
+            <div class="sp-row"><span>Mid:</span><span id="sp-mid"></span></div>
+            <div class="sp-row"><span>Back:</span><span id="sp-back"></span></div>
+            <div class="sp-row sp-total"><span>Total:</span><span id="sp-total"></span></div>
           </div>
         </div>
 
