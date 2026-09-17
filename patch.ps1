@@ -1,40 +1,13 @@
 ﻿$root = "C:\Users\Catcat\Documents\GitHub\cardex"
 if (!(Test-Path $root)) { Write-Host "Folder not found!" -ForegroundColor Red; pause; exit }
 Set-Location $root
-Write-Host "Applying safe Cardex patches..." -ForegroundColor Cyan
 
-# ==========================================
-# 1. PATCH index.html
-# ==========================================
-$html = Get-Content "index.html" -Raw -Encoding UTF8
-if ($html -notmatch 'show-transaction-history-button') {
-    $txHtml = @"
+Write-Host "Applying final Cardex patches..." -ForegroundColor Cyan
 
-<!-- Transaction History Panel -->
-<button id="show-transaction-history-button" class="btn btn-ghost btn-block">📊 Transaction History</button>
-<div id="transaction-history-panel" class="hidden fp-subpanel">
-  <div class="fp-subpanel-head">
-    <h3>Recent Transactions</h3>
-    <button id="close-transaction-history-button" class="pg-btn">Close</button>
-  </div>
-  <div id="transaction-history" class="tx-list"></div>
-</div>
-
-"@
-    # Safely insert right before the room screen starts
-    $html = $html.Replace('<section id="room-screen"', "$txHtml<section id=`"room-screen`"")
-    Set-Content "index.html" $html -Encoding UTF8
-    Write-Host "[1/4] index.html patched successfully." -ForegroundColor Green
-} else {
-    Write-Host "[1/4] index.html already has Transaction History." -ForegroundColor Yellow
-}
-
-# ==========================================
-# 2. PATCH style.css
-# ==========================================
-$css = Get-Content "style.css" -Raw -Encoding UTF8
+# --- 1. CSS Patch ---
+$css = Get-Content "$root\style.css" -Raw -Encoding UTF8
 if ($css -notmatch '\.tx-list') {
-    $cssPatch = @"
+$cssPatch = @"
 
 /* === Transaction History Styles === */
 .fp-subpanel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
@@ -51,18 +24,14 @@ if ($css -notmatch '\.tx-list') {
 .tx-neg { color: #ff8a80; }
 .tx-empty { text-align: center; color: rgba(255, 255, 255, 0.5); font-size: 13px; padding: 20px 0; }
 "@
-    Add-Content "style.css" $cssPatch -Encoding UTF8
-    Write-Host "[2/4] style.css patched successfully." -ForegroundColor Green
-} else {
-    Write-Host "[2/4] style.css already has Transaction History styles." -ForegroundColor Yellow
-}
+    Add-Content "$root\style.css" $cssPatch -Encoding UTF8
+    Write-Host "[1/3] style.css patched" -ForegroundColor Green
+} else { Write-Host "[1/3] style.css already updated" -ForegroundColor Yellow }
 
-# ==========================================
-# 3. PATCH js\db.js
-# ==========================================
-$db = Get-Content "js\db.js" -Raw -Encoding UTF8
+# --- 2. DB Patch ---
+$db = Get-Content "$root\js\db.js" -Raw -Encoding UTF8
 if ($db -notmatch 'listenUserTransactions') {
-    $dbPatch = @"
+$dbPatch = @"
 
 export function listenUserTransactions(username, callback) {
   const q = query(collection(db, "users", username, "transactions"), orderBy("createdAt", "desc"), limit(30));
@@ -73,30 +42,32 @@ export function listenUserTransactions(username, callback) {
   });
 }
 "@
-    Add-Content "js\db.js" $dbPatch -Encoding UTF8
-    Write-Host "[3/4] js\db.js patched successfully." -ForegroundColor Green
-} else {
-    Write-Host "[3/4] js\db.js already has listener." -ForegroundColor Yellow
+    Add-Content "$root\js\db.js" $dbPatch -Encoding UTF8
+    Write-Host "[2/3] js/db.js patched" -ForegroundColor Green
+} else { Write-Host "[2/3] js/db.js already updated" -ForegroundColor Yellow }
+
+# --- 3. APP Patch (Logic + Spectator Fix) ---
+$app = Get-Content "$root\js\app.js" -Raw -Encoding UTF8
+$changed = $false
+
+if ($app -notmatch 'listenUserTransactions') {
+    $app = "import { listenUserTransactions } from ""./db.js"";`r`n" + $app
+    $changed = $true
 }
 
-# ==========================================
-# 4. PATCH js\app.js
-# ==========================================
-$app = Get-Content "js\app.js" -Raw -Encoding UTF8
+if ($app -notmatch 'unsubTransactions') {
+    $app = $app.Replace('coinsFlyedFor: null,', "coinsFlyedFor: null,`r`n  transactions: [],`r`n  unsubTransactions: null,")
+    $changed = $true
+}
+
+# Fix Spectator Bug
+if ($app -notmatch 'currentUserInRoomPlayers\(\)') {
+    $app = $app.Replace('["arranging", "scoring"].includes(state.room.status)', '["arranging", "scoring"].includes(state.room.status) && currentUserInRoomPlayers()')
+    $changed = $true
+}
+
 if ($app -notmatch 'renderTransactionHistory') {
-    
-    # Add import to top
-    if ($app -notmatch 'import \{ listenUserTransactions \}') {
-        $app = "import { listenUserTransactions } from ""./db.js"";`r`n" + $app
-    }
-
-    # Add state fields
-    if ($app -notmatch 'transactions: \[\]') {
-        $app = $app -replace 'coinsFlyedFor: null,', 'coinsFlyedFor: null, transactions: [], unsubTransactions: null,'
-    }
-
-    # Append logic
-    $jsPatch = @"
+$appPatch = @"
 
 // === Transaction History Logic ===
 setInterval(() => {
@@ -145,12 +116,17 @@ document.addEventListener("click", (e) => {
   }
 });
 "@
-    $app += $jsPatch
-    Set-Content "js\app.js" $app -Encoding UTF8
-    Write-Host "[4/4] js\app.js patched successfully." -ForegroundColor Green
-} else {
-    Write-Host "[4/4] js\app.js already has Transaction History logic." -ForegroundColor Yellow
+    $app += "`r`n" + $appPatch
+    $changed = $true
 }
 
-Write-Host "`nAll patches verified and applied!" -ForegroundColor Cyan
+if ($changed) {
+    Set-Content "$root\js\app.js" $app -Encoding UTF8
+    Write-Host "[3/3] js/app.js patched & spectator bug fixed!" -ForegroundColor Green
+} else {
+    Write-Host "[3/3] js/app.js already updated" -ForegroundColor Yellow
+}
+
+Write-Host "`nAll patches applied successfully!" -ForegroundColor Cyan
+Write-Host "Now run: git add . -> git commit -m ""tx history"" -> git push" -ForegroundColor Yellow
 pause
