@@ -1,3 +1,4 @@
+import { listenUserTransactions } from "./db.js";
 import { isFirebaseConfigured } from "./firebase.js";
 import { watchAuth, loginOrRegister, logoutUser } from "./auth.js";
 import { ADMIN_PASSWORD } from "./config.js";
@@ -73,7 +74,7 @@ const state = {
   zoomOpen: false,
   cashMap: {},
   cashListeners: {},
-  coinsFlyedFor: null,
+  coinsFlyedFor: null, transactions: [], unsubTransactions: null,
   adminUsers: [],
   adminUnsub: null,
   adminSearch: "",
@@ -555,7 +556,7 @@ function renderSeats() {
     }
 
     let status = "";
-    if (["arranging", "scoring"].includes(state.room.status)) {
+    if (["arranging", "scoring"].includes(state.room.status) && currentUserInRoomPlayers()) {
       status = player.submitted ? "✓" : "…";
     } else if (state.room.status === "round_end") {
       status = player.ready ? "✓" : "…";
@@ -572,7 +573,7 @@ function renderSeats() {
 
 function renderOpponentClusters() {
   const positions = ["top", "left", "right"];
-  const show = state.room && ["arranging", "scoring"].includes(state.room.status);
+  const show = state.room && ["arranging", "scoring"].includes(state.room.status) && currentUserInRoomPlayers();
 
   positions.forEach((p) => {
     const el = $("#cluster-" + p);
@@ -1564,7 +1565,7 @@ function renderRoom() {
   if (tableEl) {
     tableEl.classList.toggle(
       "arranging",
-      ["arranging", "scoring"].includes(state.room.status)
+      ["arranging", "scoring"].includes(state.room.status) && currentUserInRoomPlayers()
     );
   }
 
@@ -2376,3 +2377,50 @@ if (sendMoneyBtn) {
     }
   });
 }
+
+// === Transaction History Logic ===
+setInterval(() => {
+  if (state.user && !state.unsubTransactions) {
+    state.unsubTransactions = listenUserTransactions(state.user.username, (txs) => {
+      state.transactions = txs;
+      if (typeof renderTransactionHistory === 'function') renderTransactionHistory();
+    });
+  }
+}, 1000);
+
+function renderTransactionHistory() {
+  const list = document.getElementById("transaction-history");
+  if (!list) return;
+  list.innerHTML = "";
+  if (!state.transactions || state.transactions.length === 0) {
+    list.innerHTML = '<div class="tx-empty">No transactions yet.</div>'; return;
+  }
+  state.transactions.forEach((tx) => {
+    const row = document.createElement("div"); row.className = "tx-row";
+    let icon = "ðŸ’°", label = "Transaction", detail = "", amountClass = "tx-pos";
+    if (tx.type === "daily_bonus") { icon = "ðŸŽ"; label = "Daily Bonus"; detail = "Login reward"; }
+    else if (tx.type === "transfer_in") { icon = "ðŸ“¥"; label = "Received"; detail = "From @" + (tx.from || "?"); }
+    else if (tx.type === "transfer_out") { icon = "ðŸ“¤"; label = "Sent"; detail = "To @" + (tx.to || "?"); amountClass = "tx-neg"; }
+    else if (tx.type === "game_settle") { icon = "ðŸŽ®"; label = "Game"; detail = tx.note || "Settlement"; if (tx.amount < 0) amountClass = "tx-neg"; }
+    else if (tx.type === "room_entry") { icon = "ðŸŽŸï¸"; label = "Room Entry"; amountClass = "tx-neg"; }
+    else if (tx.type === "game_win") { icon = "ðŸ†"; label = "Game Win"; }
+    else { label = tx.type || "Transaction"; if (tx.amount < 0) amountClass = "tx-neg"; }
+    
+    const amount = Number(tx.amount) || 0;
+    const amountStr = (amount >= 0 ? "+" : "") + formatCash(amount);
+    const time = new Date(tx.createdAt || Date.now()).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    
+    row.innerHTML = '<div class="tx-icon">' + icon + '</div><div class="tx-body"><div class="tx-label">' + label + '</div><div class="tx-detail">' + detail + '</div><div class="tx-time">' + time + '</div></div><div class="tx-amount ' + amountClass + '">' + amountStr + '</div>';
+    list.appendChild(row);
+  });
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#show-transaction-history-button")) {
+    document.getElementById("transaction-history-panel").classList.remove("hidden");
+    renderTransactionHistory();
+  }
+  if (e.target.closest("#close-transaction-history-button")) {
+    document.getElementById("transaction-history-panel").classList.add("hidden");
+  }
+});

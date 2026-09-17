@@ -901,3 +901,12 @@ export async function transferCash(fromUsername, toUsername, amount, note) {
     return newFrom;
   });
 }
+
+export function listenUserTransactions(username, callback) {
+  const q = query(collection(db, "users", username, "transactions"), orderBy("createdAt", "desc"), limit(30));
+  return onSnapshot(q, (snapshot) => {
+    const txs = [];
+    snapshot.forEach((docSnap) => { txs.push({ id: docSnap.id, ...docSnap.data() }); });
+    callback(txs);
+  });
+}
