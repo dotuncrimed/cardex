@@ -1,4 +1,4 @@
-import { listenUserTransactions } from "./db.js";
+﻿import { listenUserTransactions } from "./db.js";
 import { isFirebaseConfigured } from "./firebase.js";
 import { watchAuth, loginOrRegister, logoutUser } from "./auth.js";
 import { ADMIN_PASSWORD } from "./config.js";
@@ -1681,7 +1681,12 @@ async function hostController() {
 
   if (room.status === "arranging") {
     const allSubmitted = room.players.every((p) => p.submitted);
-    if (allSubmitted) {
+    
+    // Force finish if all submitted OR if timer expired + 10 seconds grace
+    const timerExpired = room.phaseEndsAt && Date.now() > room.phaseEndsAt;
+    const gracePeriod = timerExpired && (Date.now() - room.phaseEndsAt > 10000);
+    
+    if (allSubmitted || gracePeriod) {
       state.hostBusy = true;
       try {
         await finishRound(room.roomCode, state.user);

@@ -1,132 +1,251 @@
 ﻿$root = "C:\Users\Catcat\Documents\GitHub\cardex"
 if (!(Test-Path $root)) { Write-Host "Folder not found!" -ForegroundColor Red; pause; exit }
 Set-Location $root
+Write-Host "=== FIXING COIN DISTRIBUTION + SPECIAL HANDS + FREEZE BUGS ===" -ForegroundColor Cyan
 
-Write-Host "Applying final Cardex patches..." -ForegroundColor Cyan
+# --- FIX 1: scoring.js - Fix special hand point calculation ---
+$scoringPath = "$root\js\scoring.js"
+$scoring = Get-Content $scoringPath -Raw -Encoding UTF8
 
-# --- 1. CSS Patch ---
-$css = Get-Content "$root\style.css" -Raw -Encoding UTF8
-if ($css -notmatch '\.tx-list') {
-$cssPatch = @"
+# Find and replace the special hand scoring section
+$oldSpecialLogic = @'
+      if (sp1 || sp2) {
+        if (sp1 && sp2) {
+          if (sp1.tier > sp2.tier) {
+            matchWins[p1.uid] += 1;
+            matchupPoints[p1.uid] += sp1.points;
+            matchupPoints[p2.uid] -= sp1.points;
+          } else if (sp2.tier > sp1.tier) {
+            matchWins[p2.uid] += 1;
+            matchupPoints[p2.uid] += sp2.points;
+            matchupPoints[p1.uid] -= sp2.points;
+          }
+          details[p1.uid].push({ opponentUid: p2.uid, opponentName: p2.displayName, rows: { front: 0, middle: 0, back: 0 }, matchResult: sp1.tier === sp2.tier ? "tie" : (sp1.tier > sp2.tier ? "win" : "lose"), special: sp1.name, opponentSpecial: sp2.name, points: sp1.tier > sp2.tier ? sp1.points : sp2.tier > sp1.tier ? -sp2.points : 0, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+          details[p2.uid].push({ opponentUid: p1.uid, opponentName: p1.displayName, rows: { front: 0, middle: 0, back: 0 }, matchResult: sp1.tier === sp2.tier ? "tie" : (sp2.tier > sp1.tier ? "win" : "lose"), special: sp2.name, opponentSpecial: sp1.name, points: sp2.tier > sp1.tier ? sp2.points : sp1.tier > sp2.tier ? -sp1.points : 0, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+        } else if (sp1) {
+          matchWins[p1.uid] += 1;
+          matchupPoints[p1.uid] += sp1.points;
+          matchupPoints[p2.uid] -= sp1.points;
+          details[p1.uid].push({ opponentUid: p2.uid, opponentName: p2.displayName, rows: { front: 1, middle: 1, back: 1 }, matchResult: "win", special: sp1.name, opponentFoul: f2, points: sp1.points, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+          details[p2.uid].push({ opponentUid: p1.uid, opponentName: p1.displayName, rows: { front: -1, middle: -1, back: -1 }, matchResult: "lose", opponentSpecial: sp1.name, foul: f2, points: -sp1.points, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+        } else {
+          matchWins[p2.uid] += 1;
+          matchupPoints[p2.uid] += sp2.points;
+          matchupPoints[p1.uid] -= sp2.points;
+          details[p2.uid].push({ opponentUid: p1.uid, opponentName: p1.displayName, rows: { front: 1, middle: 1, back: 1 }, matchResult: "win", special: sp2.name, opponentFoul: f1, points: sp2.points, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+          details[p1.uid].push({ opponentUid: p2.uid, opponentName: p2.displayName, rows: { front: -1, middle: -1, back: -1 }, matchResult: "lose", opponentSpecial: sp2.name, foul: f1, points: -sp2.points, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+        }
+        continue;
+      }
+'@
 
-/* === Transaction History Styles === */
-.fp-subpanel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.fp-subpanel-head h3 { margin: 0; font-size: 16px; }
-.tx-list { display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow: auto; padding-right: 4px; }
-.tx-row { display: flex; align-items: center; gap: 12px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 10px 12px; }
-.tx-icon { width: 38px; height: 38px; border-radius: 50%; background: rgba(255, 213, 79, 0.15); display: flex; align-items: center; justify-content: center; font-size: 18px; }
-.tx-body { flex: 1; min-width: 0; }
-.tx-label { font-weight: 700; font-size: 14px; color: #fff; }
-.tx-detail { font-size: 12px; color: rgba(255, 255, 255, 0.7); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tx-time { font-size: 11px; color: rgba(255, 255, 255, 0.45); margin-top: 2px; }
-.tx-amount { font-weight: 900; font-size: 15px; }
-.tx-pos { color: #7cffb2; }
-.tx-neg { color: #ff8a80; }
-.tx-empty { text-align: center; color: rgba(255, 255, 255, 0.5); font-size: 13px; padding: 20px 0; }
-"@
-    Add-Content "$root\style.css" $cssPatch -Encoding UTF8
-    Write-Host "[1/3] style.css patched" -ForegroundColor Green
-} else { Write-Host "[1/3] style.css already updated" -ForegroundColor Yellow }
+$newSpecialLogic = @'
+      if (sp1 || sp2) {
+        if (sp1 && sp2) {
+          if (sp1.tier > sp2.tier) {
+            matchWins[p1.uid] += 1;
+            matchupPoints[p1.uid] += sp1.points;
+            matchupPoints[p2.uid] -= sp1.points;
+          } else if (sp2.tier > sp1.tier) {
+            matchWins[p2.uid] += 1;
+            matchupPoints[p2.uid] += sp2.points;
+            matchupPoints[p1.uid] -= sp2.points;
+          }
+          details[p1.uid].push({ opponentUid: p2.uid, opponentName: p2.displayName, rows: { front: 0, middle: 0, back: 0 }, matchResult: sp1.tier === sp2.tier ? "tie" : (sp1.tier > sp2.tier ? "win" : "lose"), special: sp1.name, opponentSpecial: sp2.name, points: sp1.tier > sp2.tier ? sp1.points : sp2.tier > sp1.tier ? -sp2.points : 0, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+          details[p2.uid].push({ opponentUid: p1.uid, opponentName: p1.displayName, rows: { front: 0, middle: 0, back: 0 }, matchResult: sp1.tier === sp2.tier ? "tie" : (sp2.tier > sp1.tier ? "win" : "lose"), special: sp2.name, opponentSpecial: sp1.name, points: sp2.tier > sp1.tier ? sp2.points : sp1.tier > sp2.tier ? -sp1.points : 0, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+        } else if (sp1) {
+          matchWins[p1.uid] += 1;
+          matchupPoints[p1.uid] += sp1.points;
+          matchupPoints[p2.uid] -= sp1.points;
+          details[p1.uid].push({ opponentUid: p2.uid, opponentName: p2.displayName, rows: { front: 1, middle: 1, back: 1 }, matchResult: "win", special: sp1.name, points: sp1.points, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+          details[p2.uid].push({ opponentUid: p1.uid, opponentName: p1.displayName, rows: { front: -1, middle: -1, back: -1 }, matchResult: "lose", opponentSpecial: sp1.name, points: -sp1.points, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+        } else {
+          matchWins[p2.uid] += 1;
+          matchupPoints[p2.uid] += sp2.points;
+          matchupPoints[p1.uid] -= sp2.points;
+          details[p2.uid].push({ opponentUid: p1.uid, opponentName: p1.displayName, rows: { front: 1, middle: 1, back: 1 }, matchResult: "win", special: sp2.name, points: sp2.points, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+          details[p1.uid].push({ opponentUid: p2.uid, opponentName: p2.displayName, rows: { front: -1, middle: -1, back: -1 }, matchResult: "lose", opponentSpecial: sp2.name, points: -sp2.points, royaltyEarned: 0, royaltyLost: 0, scoop: false });
+        }
+        continue;
+      }
+'@
 
-# --- 2. DB Patch ---
-$db = Get-Content "$root\js\db.js" -Raw -Encoding UTF8
-if ($db -notmatch 'listenUserTransactions') {
-$dbPatch = @"
+$scoring = $scoring.Replace($oldSpecialLogic, $newSpecialLogic)
+Set-Content $scoringPath $scoring -Encoding UTF8
+Write-Host "[1/3] Fixed special hand point calculation" -ForegroundColor Green
 
-export function listenUserTransactions(username, callback) {
-  const q = query(collection(db, "users", username, "transactions"), orderBy("createdAt", "desc"), limit(30));
-  return onSnapshot(q, (snapshot) => {
-    const txs = [];
-    snapshot.forEach((docSnap) => { txs.push({ id: docSnap.id, ...docSnap.data() }); });
-    callback(txs);
-  });
-}
-"@
-    Add-Content "$root\js\db.js" $dbPatch -Encoding UTF8
-    Write-Host "[2/3] js/db.js patched" -ForegroundColor Green
-} else { Write-Host "[2/3] js/db.js already updated" -ForegroundColor Yellow }
+# --- FIX 2: db.js - Fix finishRound to handle missing players ---
+$dbPath = "$root\js\db.js"
+$db = Get-Content $dbPath -Raw -Encoding UTF8
 
-# --- 3. APP Patch (Logic + Spectator Fix) ---
-$app = Get-Content "$root\js\app.js" -Raw -Encoding UTF8
-$changed = $false
+# Replace the hand reading loop in finishRound
+$oldHandLoop = @'
+    const handsMap = {};
 
-if ($app -notmatch 'listenUserTransactions') {
-    $app = "import { listenUserTransactions } from ""./db.js"";`r`n" + $app
-    $changed = $true
-}
+    for (const player of room.players) {
+      const snap = await getDoc(handRef(roomId, player.uid));
+      let data = snap.exists() ? snap.data() : null;
+      if (!data) continue;
 
-if ($app -notmatch 'unsubTransactions') {
-    $app = $app.Replace('coinsFlyedFor: null,', "coinsFlyedFor: null,`r`n  transactions: [],`r`n  unsubTransactions: null,")
-    $changed = $true
-}
+      if (!data.special && data.hand && data.hand.length === 13) {
+        const spec = detectSpecial(data.hand);
+        if (spec) {
+          const sorted = sortCards(data.hand);
+          data.special = spec;
+          data.arrangement = {
+            front: sorted.slice(0, 3),
+            middle: sorted.slice(3, 8),
+            back: sorted.slice(8, 13)
+          };
+          data.submitted = true;
+          await setDoc(
+            handRef(roomId, player.uid),
+            { arrangement: data.arrangement, special: spec, submitted: true, updatedAt: Date.now() },
+            { merge: true }
+          );
+        }
+      }
 
-# Fix Spectator Bug
-if ($app -notmatch 'currentUserInRoomPlayers\(\)') {
-    $app = $app.Replace('["arranging", "scoring"].includes(state.room.status)', '["arranging", "scoring"].includes(state.room.status) && currentUserInRoomPlayers()')
-    $changed = $true
-}
+      if (!data.arrangement && data.hand && data.hand.length === 13) {
+        const arrangement = botArrangeHand(
+          data.hand,
+          player.botLevel || room.settings.botLevel || "normal"
+        );
+        await submitArrangement(roomId, player.uid, arrangement, false);
+        data.arrangement = arrangement;
+        data.submitted = true;
+      }
 
-if ($app -notmatch 'renderTransactionHistory') {
-$appPatch = @"
+      handsMap[player.uid] = data;
+    }
+'@
 
-// === Transaction History Logic ===
-setInterval(() => {
-  if (state.user && !state.unsubTransactions) {
-    state.unsubTransactions = listenUserTransactions(state.user.username, (txs) => {
-      state.transactions = txs;
-      if (typeof renderTransactionHistory === 'function') renderTransactionHistory();
-    });
+$newHandLoop = @'
+    const handsMap = {};
+
+    for (const player of room.players) {
+      try {
+        const snap = await getDoc(handRef(roomId, player.uid));
+        let data = snap.exists() ? snap.data() : null;
+        
+        // If no hand data exists, create a fouled arrangement
+        if (!data) {
+          data = {
+            uid: player.uid,
+            username: player.username,
+            hand: [],
+            arrangement: { front: [], middle: [], back: [] },
+            fouled: true,
+            submitted: true,
+            roundNumber: room.roundNumber,
+            updatedAt: Date.now()
+          };
+          await setDoc(handRef(roomId, player.uid), data, { merge: true });
+        }
+
+        // Auto-detect special hands for players who didn't submit
+        if (!data.special && data.hand && data.hand.length === 13) {
+          const spec = detectSpecial(data.hand);
+          if (spec) {
+            const sorted = sortCards(data.hand);
+            data.special = spec;
+            data.arrangement = {
+              front: sorted.slice(0, 3),
+              middle: sorted.slice(3, 8),
+              back: sorted.slice(8, 13)
+            };
+            data.submitted = true;
+            await setDoc(
+              handRef(roomId, player.uid),
+              { arrangement: data.arrangement, special: spec, submitted: true, updatedAt: Date.now() },
+              { merge: true }
+            );
+          }
+        }
+
+        // Auto-arrange for players who didn't submit (bot their hand)
+        if (!data.arrangement && data.hand && data.hand.length === 13) {
+          const arrangement = botArrangeHand(
+            data.hand,
+            player.botLevel || room.settings.botLevel || "normal"
+          );
+          await submitArrangement(roomId, player.uid, arrangement, false);
+          data.arrangement = arrangement;
+          data.submitted = true;
+        }
+
+        handsMap[player.uid] = data;
+      } catch (error) {
+        console.error("Failed to process hand for player:", player.uid, error);
+        // Create a fouled hand on error
+        handsMap[player.uid] = {
+          uid: player.uid,
+          username: player.username,
+          hand: [],
+          arrangement: { front: [], middle: [], back: [] },
+          fouled: true,
+          submitted: true
+        };
+      }
+    }
+'@
+
+$db = $db.Replace($oldHandLoop, $newHandLoop)
+Set-Content $dbPath $db -Encoding UTF8
+Write-Host "[2/3] Fixed finishRound to handle missing players" -ForegroundColor Green
+
+# --- FIX 3: app.js - Add timeout to force round completion ---
+$appPath = "$root\js\app.js"
+$app = Get-Content $appPath -Raw -Encoding UTF8
+
+# Find the hostController and add timeout logic
+$oldHostLogic = @'
+  if (room.status === "arranging") {
+    const allSubmitted = room.players.every((p) => p.submitted);
+    if (allSubmitted) {
+      state.hostBusy = true;
+      try {
+        await finishRound(room.roomCode, state.user);
+        succeed();
+      } catch (error) {
+        console.error(error);
+        fail();
+      } finally {
+        state.hostBusy = false;
+      }
+    }
+    return;
   }
-}, 1000);
+'@
 
-function renderTransactionHistory() {
-  const list = document.getElementById("transaction-history");
-  if (!list) return;
-  list.innerHTML = "";
-  if (!state.transactions || state.transactions.length === 0) {
-    list.innerHTML = '<div class="tx-empty">No transactions yet.</div>'; return;
-  }
-  state.transactions.forEach((tx) => {
-    const row = document.createElement("div"); row.className = "tx-row";
-    let icon = "💰", label = "Transaction", detail = "", amountClass = "tx-pos";
-    if (tx.type === "daily_bonus") { icon = "🎁"; label = "Daily Bonus"; detail = "Login reward"; }
-    else if (tx.type === "transfer_in") { icon = "📥"; label = "Received"; detail = "From @" + (tx.from || "?"); }
-    else if (tx.type === "transfer_out") { icon = "📤"; label = "Sent"; detail = "To @" + (tx.to || "?"); amountClass = "tx-neg"; }
-    else if (tx.type === "game_settle") { icon = "🎮"; label = "Game"; detail = tx.note || "Settlement"; if (tx.amount < 0) amountClass = "tx-neg"; }
-    else if (tx.type === "room_entry") { icon = "🎟️"; label = "Room Entry"; amountClass = "tx-neg"; }
-    else if (tx.type === "game_win") { icon = "🏆"; label = "Game Win"; }
-    else { label = tx.type || "Transaction"; if (tx.amount < 0) amountClass = "tx-neg"; }
+$newHostLogic = @'
+  if (room.status === "arranging") {
+    const allSubmitted = room.players.every((p) => p.submitted);
     
-    const amount = Number(tx.amount) || 0;
-    const amountStr = (amount >= 0 ? "+" : "") + formatCash(amount);
-    const time = new Date(tx.createdAt || Date.now()).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    // Force finish if all submitted OR if timer expired + 10 seconds grace
+    const timerExpired = room.phaseEndsAt && Date.now() > room.phaseEndsAt;
+    const gracePeriod = timerExpired && (Date.now() - room.phaseEndsAt > 10000);
     
-    row.innerHTML = '<div class="tx-icon">' + icon + '</div><div class="tx-body"><div class="tx-label">' + label + '</div><div class="tx-detail">' + detail + '</div><div class="tx-time">' + time + '</div></div><div class="tx-amount ' + amountClass + '">' + amountStr + '</div>';
-    list.appendChild(row);
-  });
-}
-
-document.addEventListener("click", (e) => {
-  if (e.target.closest("#show-transaction-history-button")) {
-    document.getElementById("transaction-history-panel").classList.remove("hidden");
-    renderTransactionHistory();
+    if (allSubmitted || gracePeriod) {
+      state.hostBusy = true;
+      try {
+        await finishRound(room.roomCode, state.user);
+        succeed();
+      } catch (error) {
+        console.error(error);
+        fail();
+      } finally {
+        state.hostBusy = false;
+      }
+    }
+    return;
   }
-  if (e.target.closest("#close-transaction-history-button")) {
-    document.getElementById("transaction-history-panel").classList.add("hidden");
-  }
-});
-"@
-    $app += "`r`n" + $appPatch
-    $changed = $true
-}
+'@
 
-if ($changed) {
-    Set-Content "$root\js\app.js" $app -Encoding UTF8
-    Write-Host "[3/3] js/app.js patched & spectator bug fixed!" -ForegroundColor Green
-} else {
-    Write-Host "[3/3] js/app.js already updated" -ForegroundColor Yellow
-}
+$app = $app.Replace($oldHostLogic, $newHostLogic)
+Set-Content $appPath $app -Encoding UTF8
+Write-Host "[3/3] Added timeout to force round completion" -ForegroundColor Green
 
-Write-Host "`nAll patches applied successfully!" -ForegroundColor Cyan
-Write-Host "Now run: git add . -> git commit -m ""tx history"" -> git push" -ForegroundColor Yellow
+Write-Host "`n=== ALL FIXES APPLIED ===" -ForegroundColor Yellow
+Write-Host "Run: git add . -> git commit -m 'Fix coin distribution, special hands, and freeze bugs' -> git push" -ForegroundColor Cyan
 pause

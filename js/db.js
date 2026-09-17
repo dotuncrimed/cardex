@@ -1,4 +1,4 @@
-import { db } from "./firebase.js";
+﻿import { db } from "./firebase.js";
 import {
   doc,
   getDoc,
@@ -642,40 +642,69 @@ export async function finishRound(roomId, user) {
     const handsMap = {};
 
     for (const player of room.players) {
-      const snap = await getDoc(handRef(roomId, player.uid));
-      let data = snap.exists() ? snap.data() : null;
-      if (!data) continue;
-
-      if (!data.special && data.hand && data.hand.length === 13) {
-        const spec = detectSpecial(data.hand);
-        if (spec) {
-          const sorted = sortCards(data.hand);
-          data.special = spec;
-          data.arrangement = {
-            front: sorted.slice(0, 3),
-            middle: sorted.slice(3, 8),
-            back: sorted.slice(8, 13)
+      try {
+        const snap = await getDoc(handRef(roomId, player.uid));
+        let data = snap.exists() ? snap.data() : null;
+        
+        // If no hand data exists, create a fouled arrangement
+        if (!data) {
+          data = {
+            uid: player.uid,
+            username: player.username,
+            hand: [],
+            arrangement: { front: [], middle: [], back: [] },
+            fouled: true,
+            submitted: true,
+            roundNumber: room.roundNumber,
+            updatedAt: Date.now()
           };
-          data.submitted = true;
-          await setDoc(
-            handRef(roomId, player.uid),
-            { arrangement: data.arrangement, special: spec, submitted: true, updatedAt: Date.now() },
-            { merge: true }
-          );
+          await setDoc(handRef(roomId, player.uid), data, { merge: true });
         }
-      }
 
-      if (!data.arrangement && data.hand && data.hand.length === 13) {
-        const arrangement = botArrangeHand(
-          data.hand,
-          player.botLevel || room.settings.botLevel || "normal"
-        );
-        await submitArrangement(roomId, player.uid, arrangement, false);
-        data.arrangement = arrangement;
-        data.submitted = true;
-      }
+        // Auto-detect special hands for players who didn't submit
+        if (!data.special && data.hand && data.hand.length === 13) {
+          const spec = detectSpecial(data.hand);
+          if (spec) {
+            const sorted = sortCards(data.hand);
+            data.special = spec;
+            data.arrangement = {
+              front: sorted.slice(0, 3),
+              middle: sorted.slice(3, 8),
+              back: sorted.slice(8, 13)
+            };
+            data.submitted = true;
+            await setDoc(
+              handRef(roomId, player.uid),
+              { arrangement: data.arrangement, special: spec, submitted: true, updatedAt: Date.now() },
+              { merge: true }
+            );
+          }
+        }
 
-      handsMap[player.uid] = data;
+        // Auto-arrange for players who didn't submit (bot their hand)
+        if (!data.arrangement && data.hand && data.hand.length === 13) {
+          const arrangement = botArrangeHand(
+            data.hand,
+            player.botLevel || room.settings.botLevel || "normal"
+          );
+          await submitArrangement(roomId, player.uid, arrangement, false);
+          data.arrangement = arrangement;
+          data.submitted = true;
+        }
+
+        handsMap[player.uid] = data;
+      } catch (error) {
+        console.error("Failed to process hand for player:", player.uid, error);
+        // Create a fouled hand on error
+        handsMap[player.uid] = {
+          uid: player.uid,
+          username: player.username,
+          hand: [],
+          arrangement: { front: [], middle: [], back: [] },
+          fouled: true,
+          submitted: true
+        };
+      }
     }
 
     const results = calculateResults(room, handsMap);
