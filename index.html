@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -166,7 +166,17 @@
     </section>
 
     <!-- ROOM -->
-    <section id="room-screen" class="screen hidden">
+    
+<!-- Transaction History Panel -->
+<button id="show-transaction-history-button" class="btn btn-ghost btn-block">📊 Transaction History</button>
+<div id="transaction-history-panel" class="hidden fp-subpanel">
+  <div class="fp-subpanel-head">
+    <h3>Recent Transactions</h3>
+    <button id="close-transaction-history-button" class="pg-btn">Close</button>
+  </div>
+  <div id="transaction-history" class="tx-list"></div>
+</div>
+<section id="room-screen" class="screen hidden">
       <div class="pg-table">
 
         <!-- HUD -->
@@ -435,3 +445,4 @@
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>
+
