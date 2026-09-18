@@ -1,18 +1,66 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Chinese Poker Multiplayer</title>
-  <link rel="stylesheet" href="./style.css" />
+  <title>CARDEX — Chinese Poker Multiplayer</title>
+
+  <link rel="stylesheet" href="style.css" />
+
+  <style>
+    /*
+      Extra safety styles for overlays and score panel.
+      These do not replace style.css.
+    */
+
+    #score-panel {
+      display: none;
+    }
+
+    #reveal-layer:not(.hidden) ~ #score-panel {
+      display: block;
+    }
+
+    #transaction-history-panel,
+    #send-money-form {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.55);
+      padding: 16px;
+    }
+
+    #transaction-history-panel.hidden,
+    #send-money-form.hidden {
+      display: none;
+    }
+
+    .tx-modal,
+    .send-modal {
+      position: relative;
+      width: min(94%, 560px);
+      max-height: 86vh;
+      overflow: auto;
+      background: rgba(7, 24, 15, 0.98);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 16px;
+      padding: 18px;
+    }
+  </style>
 </head>
+
 <body>
   <div id="app">
 
-    <!-- LOGIN -->
-    <section id="login-screen" class="screen hidden">
+    <!-- ========================= -->
+    <!-- LOGIN SCREEN              -->
+    <!-- ========================= -->
+    <div id="login-screen" class="screen">
       <div class="fp-wrap">
-        <div class="fp-backdrop" aria-hidden="true">
+        <div class="fp-backdrop">
           <div class="draft-card dc-1">♠</div>
           <div class="draft-card dc-2">♥</div>
           <div class="draft-card dc-3">♦</div>
@@ -24,330 +72,490 @@
         <div class="fp-panel">
           <div class="fp-logo">
             <div class="fp-logo-cards">
-              <span class="mini mini-1">♠</span>
-              <span class="mini mini-2">♥</span>
-              <span class="mini mini-3">♦</span>
+              <div class="mini mini-1">♠</div>
+              <div class="mini mini-2">♥</div>
+              <div class="mini mini-3">♣</div>
             </div>
+
             <h1 class="fp-title">CARDEX</h1>
-            <p class="fp-tagline">PUSOY • CHINESE POKER • LIVE TABLES</p>
+            <div class="fp-tagline">PUSOY • CHINESE POKER • LIVE TABLES</div>
           </div>
 
           <div class="form-group">
-            <label>Username</label>
-            <input id="login-username" type="text" maxlength="20" autocomplete="off" placeholder="Enter username" />
+            <label for="login-username">Username</label>
+            <input id="login-username" type="text" autocomplete="off" />
           </div>
 
           <div class="form-group">
-            <label>PIN</label>
-            <input id="login-pin" type="password" maxlength="30" placeholder="Minimum 6 characters" />
+            <label for="login-pin">PIN</label>
+            <input id="login-pin" type="password" autocomplete="off" />
           </div>
 
-          <button id="login-button" class="btn btn-primary btn-block">Login / Register</button>
-          <p id="login-error" class="error"></p>
+          <button id="login-button" class="btn-primary btn-block">
+            Login / Register
+          </button>
 
-          <p class="fp-foot">v1.0 • Private tables • Play responsibly</p>
+          <div id="login-error" class="error"></div>
+
+          <div class="fp-foot">
+            v1.0 • Private tables • Play responsibly
+          </div>
         </div>
       </div>
-    </section>
+    </div>
 
-    <!-- MENU -->
-    <section id="menu-screen" class="screen hidden">
+    <!-- ========================= -->
+    <!-- MENU SCREEN               -->
+    <!-- ========================= -->
+    <div id="menu-screen" class="screen hidden">
       <div class="fp-wrap">
-        <div class="fp-backdrop" aria-hidden="true">
+        <div class="fp-backdrop">
           <div class="draft-card dc-1">♠</div>
           <div class="draft-card dc-2">♥</div>
           <div class="draft-card dc-3">♦</div>
           <div class="draft-card dc-4">♣</div>
-          <div class="draft-card dc-5">♠</div>
-          <div class="draft-card dc-6">♥</div>
         </div>
 
-        <div class="fp-panel">
+        <div class="fp-panel" style="width: min(96%, 760px);">
           <div class="fp-menu-head">
-            <div class="fp-avatar" id="menu-avatar">?</div>
+            <div id="menu-avatar" class="fp-avatar">?</div>
+
             <div>
               <div id="menu-username" class="fp-name">Player</div>
-              <div class="fp-cash-chip">$ <span id="menu-cash">0</span></div>
+              <div class="fp-cash-chip">
+                $ <span id="menu-cash">0</span>
+              </div>
             </div>
           </div>
+
+          <div id="menu-message" class="message"></div>
 
           <div class="fp-menu-grid">
-            <button id="show-create-room-button" class="btn btn-primary">Create Room</button>
-            <button id="show-join-room-button" class="btn btn-secondary">Join Room</button>
+            <button id="show-create-room-button" class="btn-primary">
+              Create Room
+            </button>
+
+            <button id="show-join-room-button" class="btn-primary">
+              Join Room
+            </button>
+
+            <button id="claim-daily-button" class="btn-secondary daily-claim-btn btn-block">
+              🎁 Claim Daily +10,000
+            </button>
+
+            <button id="show-send-money-button" class="btn-secondary">
+              💸 Send Money
+            </button>
+
+            <button id="show-transaction-history-button" class="btn-secondary">
+              📊 Transaction History
+            </button>
+
+            <button id="admin-button" class="btn-ghost">
+              Admin
+            </button>
+
+            <button id="logout-button" class="btn-ghost">
+              Logout
+            </button>
           </div>
 
-          <button id="claim-daily-button" class="btn btn-primary btn-block daily-claim-btn">🎁 Claim Daily +10,000</button>
-          <p id="menu-message" class="message"></p>
-
-          <div class="fp-lobby">
-            <div class="fp-lobby-head">
-              <div class="fp-lobby-title">🎥 Live Tables</div>
-              <div class="fp-lobby-count" id="lobby-room-count">0 live</div>
-            </div>
-            <div class="fp-lobby-hint">Idle tables auto-close after 15 minutes</div>
-            <div id="lobby-rooms-list" class="lobby-rooms-list"></div>
-          </div>
-
-          <div id="create-room-form" class="hidden fp-subpanel">
+          <!-- CREATE ROOM FORM -->
+          <div id="create-room-form" class="panel-sub hidden">
             <h3>Create Room</h3>
+
             <div class="form-group">
-              <label>Minimum Bet</label>
-              <input id="create-min-bet" type="number" min="0" value="100" />
+              <label for="create-min-bet">Minimum Bet</label>
+              <input id="create-min-bet" type="number" value="100" />
             </div>
+
             <div class="form-group">
-              <label>Arrange Timer (sec)</label>
-              <input id="create-arrange-timer" type="number" min="0" value="120" />
+              <label for="create-arrange-timer">Arrange Timer (sec)</label>
+              <input id="create-arrange-timer" type="number" value="60" />
             </div>
+
             <div class="form-group">
-              <label>Ready Timer (sec)</label>
-              <input id="create-ready-timer" type="number" min="0" value="30" />
+              <label for="create-ready-timer">Ready Timer (sec)</label>
+              <input id="create-ready-timer" type="number" value="15" />
             </div>
+
             <div class="form-group">
-              <label>Bot Level</label>
+              <label for="create-bot-level">Bot Level</label>
               <select id="create-bot-level">
                 <option value="easy">Easy</option>
                 <option value="normal" selected>Normal</option>
                 <option value="hard">Hard</option>
               </select>
             </div>
-            <label class="fp-check"><input id="create-auto-fill-bots" type="checkbox" checked /> Auto-fill empty seats with bots</label>
-            <label class="fp-check"><input id="create-scoop-bonus" type="checkbox" checked /> Scoop bonus (+3)</label>
-            <label class="fp-check"><input id="create-auto-arrange" type="checkbox" /> Auto-arrange cards</label>
-            <div class="pg-actions">
-              <button id="create-room-button" class="btn btn-primary">Create Room</button>
-              <button id="cancel-create-room-button" class="btn btn-ghost">Cancel</button>
+
+            <label class="fp-check">
+              <input id="create-auto-fill-bots" type="checkbox" checked />
+              Auto-fill empty seats with bots
+            </label>
+
+            <label class="fp-check">
+              <input id="create-scoop-bonus" type="checkbox" checked />
+              Scoop bonus (+3)
+            </label>
+
+            <label class="fp-check">
+              <input id="create-auto-arrange" type="checkbox" />
+              Auto-arrange cards
+            </label>
+
+            <div class="controls">
+              <button id="create-room-button" class="btn-primary">
+                Create Room
+              </button>
+
+              <button id="cancel-create-room-button" class="btn-secondary">
+                Cancel
+              </button>
             </div>
-            <p id="create-room-error" class="error"></p>
+
+            <div id="create-room-error" class="error"></div>
           </div>
 
-          <div id="join-room-form" class="hidden fp-subpanel">
+          <!-- JOIN ROOM FORM -->
+          <div id="join-room-form" class="panel-sub hidden">
             <h3>Join Room</h3>
+
             <div class="form-group">
-              <label>Room Code</label>
-              <input id="join-room-code" type="text" maxlength="5" autocomplete="off" placeholder="e.g. K7P2Q" />
+              <label for="join-room-code">Room Code</label>
+              <input id="join-room-code" type="text" autocomplete="off" />
             </div>
-            <div class="pg-actions">
-              <button id="join-room-button" class="btn btn-primary">Join Room</button>
-              <button id="cancel-join-room-button" class="btn btn-ghost">Cancel</button>
+
+            <div class="controls">
+              <button id="join-room-button" class="btn-primary">
+                Join Room
+              </button>
+
+              <button id="cancel-join-room-button" class="btn-secondary">
+                Cancel
+              </button>
             </div>
-            <p id="join-room-error" class="error"></p>
+
+            <div id="join-room-error" class="error"></div>
           </div>
 
-          <button id="show-send-money-button" class="btn btn-ghost btn-block">💸 Send Money</button>
+          <!-- LIVE TABLES -->
+          <div class="fp-lobby">
+            <div class="fp-lobby-head">
+              <div class="fp-lobby-title">🎥 Live Tables</div>
+              <div id="lobby-room-count" class="fp-lobby-count">0 live</div>
+            </div>
 
-          <div id="send-money-form" class="hidden fp-subpanel">
-            <h3>Send Money</h3>
-            <div class="form-group">
-              <label>Recipient Username</label>
-              <input id="send-username" type="text" maxlength="20" autocomplete="off" placeholder="username" />
-            </div>
-            <div class="form-group">
-              <label>Amount</label>
-              <input id="send-amount" type="number" min="1" placeholder="0" />
-            </div>
-            <div class="form-group">
-              <label>Note (optional)</label>
-              <input id="send-note" type="text" maxlength="40" placeholder="optional note" />
-            </div>
-            <div class="pg-actions">
-              <button id="send-money-button" class="btn btn-primary">Send</button>
-              <button id="cancel-send-money-button" class="btn btn-ghost">Cancel</button>
-            </div>
-            <p id="send-money-error" class="error"></p>
-            <p id="send-money-message" class="message"></p>
-          </div>
+            <div id="lobby-rooms-list" class="lobby-rooms-list"></div>
 
-          <div class="fp-menu-foot">
-            <button id="admin-button" class="btn btn-ghost">Admin</button>
-            <button id="logout-button" class="btn btn-ghost">Logout</button>
+            <div class="fp-lobby-hint">
+              Idle tables auto-close after 15 minutes
+            </div>
           </div>
         </div>
       </div>
-    </section>
+    </div>
 
-    <!-- ROOM -->
-    
-<!-- Transaction History Panel -->
-<button id="show-transaction-history-button" class="btn btn-ghost btn-block">📊 Transaction History</button>
-<div id="transaction-history-panel" class="hidden fp-subpanel">
-  <div class="fp-subpanel-head">
-    <h3>Recent Transactions</h3>
-    <button id="close-transaction-history-button" class="pg-btn">Close</button>
-  </div>
-  <div id="transaction-history" class="tx-list"></div>
-</div>
-<section id="room-screen" class="screen hidden">
+    <!-- ========================= -->
+    <!-- ROOM SCREEN               -->
+    <!-- ========================= -->
+    <div id="room-screen" class="screen hidden">
       <div class="pg-table">
+        <div class="mat"></div>
+        <div class="mat-logo">CARDEX</div>
+
+        <div id="banner" class="banner hidden"></div>
 
         <!-- HUD -->
         <div class="hud">
-          <button id="leave-room-button" class="hud-back">←</button>
-          <div class="hud-badges">
-            <div class="hud-badge">ID <span id="room-code"></span></div>
-            <div class="hud-badge">$ <span id="hud-cash">0</span></div>
+          <button id="exit-room-button" class="hud-back" title="Exit Room">
+            ←
+          </button>
+
+          <div class="hud-right hud-badges">
+            <div class="hud-badge" id="hud-cash">0</div>
+            <div class="hud-badge" id="pg-round">Round 0</div>
+            <div class="hud-badge" id="pg-pot">1 pt = 0</div>
           </div>
-          <button id="room-admin-button" class="hud-back hud-right">⚙</button>
+
+          <button id="room-admin-button" class="pg-btn pg-icon-btn" title="Admin">
+            ⚙
+          </button>
         </div>
 
-        <!-- Mat -->
-        <div class="mat"></div>
-        <div class="mat-logo">PUSOY</div>
+        <!-- SEATS -->
+        <div id="seat-top" class="seat seat-top"></div>
+        <div id="seat-left" class="seat seat-left"></div>
+        <div id="seat-right" class="seat seat-right"></div>
+        <div id="seat-bottom" class="seat seat-bottom"></div>
 
-        <!-- Seats -->
-        <div class="seat seat-top" id="seat-top"></div>
-        <div class="seat seat-left" id="seat-left"></div>
-        <div class="seat seat-right" id="seat-right"></div>
-        <div class="seat seat-bottom" id="seat-bottom"></div>
+        <!-- OPPONENT CARD BACK CLUSTERS -->
+        <div id="cluster-top" class="cluster cluster-top hidden"></div>
+        <div id="cluster-left" class="cluster cluster-left hidden"></div>
+        <div id="cluster-right" class="cluster cluster-right hidden"></div>
 
-        <!-- Opponent card-back clusters -->
-        <div class="cluster cluster-top hidden" id="cluster-top"></div>
-        <div class="cluster cluster-left hidden" id="cluster-left"></div>
-        <div class="cluster cluster-right hidden" id="cluster-right"></div>
-
-        <!-- Center -->
+        <!-- CENTER TIMER -->
         <div class="table-center">
-          <div class="pg-timer hidden" id="pg-timer">--</div>
+          <div id="pg-timer" class="pg-timer hidden">--</div>
         </div>
-        <div class="banner hidden" id="banner">Start</div>
 
+        <!-- ROOM MESSAGE -->
         <div id="room-message" class="pg-message"></div>
 
-        <!-- hidden legacy -->
-        <div class="hidden">
-          <span id="room-status"></span>
-          <span id="room-round"></span>
-          <span id="room-min-bet"></span>
-          <span id="room-pot"></span>
-          <span id="room-bot-level"></span>
-          <span id="room-timer"></span>
-          <span id="pg-round"></span>
-          <span id="pg-pot"></span>
-          <div id="pg-seats"></div>
-          <div id="hand-cards"></div>
-          <div id="front-cards"></div>
-          <div id="middle-cards"></div>
-          <div id="back-cards"></div>
-          <button id="assign-front-button"></button>
-          <button id="assign-middle-button"></button>
-          <button id="assign-back-button"></button>
-        </div>
-
-        <!-- LOBBY -->
+        <!-- ========================= -->
+        <!-- LOBBY SECTION             -->
+        <!-- ========================= -->
         <div id="lobby-section" class="pg-panel hidden">
           <h3>Lobby</h3>
-          <div id="player-list" class="pg-list"></div>
-          <div id="spectator-list" class="pg-list"></div>
+
+          <div class="panel-sub">
+            <div>
+              Room Code:
+              <strong id="room-code">-</strong>
+            </div>
+
+            <div>
+              Status:
+              <span id="room-status">lobby</span>
+            </div>
+
+            <div>
+              Round:
+              <span id="room-round">0</span>
+            </div>
+
+            <div>
+              Min Bet:
+              <span id="room-min-bet">0</span>
+            </div>
+
+            <div>
+              Pot:
+              <span id="room-pot">0</span>
+            </div>
+
+            <div>
+              Bot Level:
+              <span id="room-bot-level">normal</span>
+            </div>
+
+            <div>
+              Timer:
+              <span id="room-timer">Off</span>
+            </div>
+          </div>
+
+          <div class="panel-sub">
+            <h4>Players</h4>
+            <div id="player-list"></div>
+          </div>
+
+          <div class="panel-sub">
+            <h4>Spectators</h4>
+            <div id="spectator-list"></div>
+          </div>
+
           <div class="pg-actions">
-            <button id="start-room-button" class="pg-btn primary hidden">Start Game</button>
-            <button id="fill-bots-button" class="pg-btn hidden">Fill Bots</button>
-            <button id="take-seat-button" class="pg-btn primary hidden">Take Seat</button>
+            <button id="start-room-button" class="pg-btn primary hidden">
+              Start Game
+            </button>
+
+            <button id="fill-bots-button" class="pg-btn hidden">
+              Fill Bots
+            </button>
+
+            <button id="take-seat-button" class="pg-btn hidden">
+              Take Seat
+            </button>
+
+            <button id="join-game-button" class="pg-btn hidden">
+              Join Game
+            </button>
+
+            <button id="leave-room-button" class="pg-btn">
+              Exit Room
+            </button>
           </div>
         </div>
 
-        <!-- ARRANGE (table view) -->
+        <!-- ========================= -->
+        <!-- ARRANGE SECTION           -->
+        <!-- ========================= -->
         <div id="arrange-section" class="hidden">
-          <div id="arrange-status" class="pg-message"></div>
-          <div class="table-my-rows" id="table-my-rows"></div>
+          <div id="arrange-status" class="pg-message" style="top: 18%;"></div>
+
+          <div id="table-my-rows" class="table-my-rows"></div>
+
           <div class="arrange-controls">
-            <button id="open-zoom-button" class="pg-btn">Arrange</button>
-            <button id="submit-arrangement-button" class="ready-btn">Submit</button>
+            <button id="open-zoom-button" class="pg-btn primary">
+              Arrange
+            </button>
+
+            <button id="auto-arrange-button" class="pg-btn hidden">
+              Auto
+            </button>
+
+            <button id="clear-arrangement-button" class="pg-btn">
+              Reset
+            </button>
+
+            <button id="submit-arrangement-button" class="pg-btn primary">
+              Submit
+            </button>
+          </div>
+
+          <!-- Legacy controls required by app.js -->
+          <div class="hidden">
+            <button id="assign-front-button">Front</button>
+            <button id="assign-middle-button">Middle</button>
+            <button id="assign-back-button">Back</button>
+
+            <div id="hand-cards"></div>
+            <div id="front-cards"></div>
+            <div id="middle-cards"></div>
+            <div id="back-cards"></div>
           </div>
         </div>
 
-        <!-- ZOOM ARRANGE VIEW -->
+        <!-- ========================= -->
+        <!-- ZOOM ARRANGE VIEW         -->
+        <!-- ========================= -->
         <div id="zoom-view" class="zoom-view hidden">
           <div class="zoom-head">
-            <div class="pg-timer hidden" id="zoom-timer">--</div>
-            <div>Arrange Your Cards</div>
+            <span>Arrange Your Cards</span>
+            <div id="zoom-timer" class="pg-timer hidden">--</div>
           </div>
 
-          <div class="my-rows zoom-rows">
-            <div class="my-row">
-              <div class="row-label" id="label-front"></div>
-              <div class="row-cards" id="row-front"></div>
-            </div>
-            <div class="my-row">
-              <div class="row-label" id="label-middle"></div>
-              <div class="row-cards" id="row-middle"></div>
-            </div>
-            <div class="my-row">
-              <div class="row-label" id="label-back"></div>
-              <div class="row-cards" id="row-back"></div>
+          <div class="zoom-rows">
+            <div class="my-rows">
+              <div class="my-row">
+                <div id="label-front" class="row-label"></div>
+                <div id="row-front" class="row-cards"></div>
+              </div>
+
+              <div class="my-row">
+                <div id="label-middle" class="row-label"></div>
+                <div id="row-middle" class="row-cards"></div>
+              </div>
+
+              <div class="my-row">
+                <div id="label-back" class="row-label"></div>
+                <div id="row-back" class="row-cards"></div>
+              </div>
             </div>
           </div>
 
           <div class="zoom-controls">
-            <button id="auto-arrange-button" class="pg-btn hidden">Auto</button>
-            <button id="swap-mid-back-button" class="pg-btn">Swap Mid/Back</button>
-            <button id="clear-arrangement-button" class="pg-btn">Reset</button>
-            <button id="ready-arrange-button" class="ready-btn">Ready</button>
+            <button id="ready-arrange-button" class="ready-btn">
+              Ready
+            </button>
+
+            <button id="swap-mid-back-button" class="pg-btn">
+              Swap Mid/Back
+            </button>
           </div>
         </div>
 
-        <!-- SPECIAL HAND DECLARE PANEL -->
-        <div id="declare-panel" class="declare-panel hidden">
-          <div class="declare-title" id="declare-title">SPECIAL HAND!</div>
-          <div class="declare-cards" id="declare-cards"></div>
-          <div class="declare-points" id="declare-points"></div>
-          <button id="declare-button" class="ready-btn">DECLARE ✨</button>
-        </div>
-
-        <!-- REVEAL / COMPARE LAYER -->
+        <!-- ========================= -->
+        <!-- REVEAL LAYER              -->
+        <!-- ========================= -->
         <div id="reveal-layer" class="reveal-layer hidden">
-          <button id="reveal-skip" class="pg-btn hidden">Skip ▸▸</button>
+          <div id="reveal-top" class="reveal-slot reveal-top"></div>
+          <div id="reveal-left" class="reveal-slot reveal-left"></div>
+          <div id="reveal-right" class="reveal-slot reveal-right"></div>
+          <div id="reveal-bottom" class="reveal-slot reveal-bottom"></div>
 
-          <div class="reveal-slot reveal-top" id="reveal-top"></div>
-          <div class="reveal-slot reveal-left" id="reveal-left"></div>
-          <div class="reveal-slot reveal-right" id="reveal-right"></div>
-          <div class="reveal-slot reveal-bottom" id="reveal-bottom"></div>
+          <button id="reveal-skip" class="pg-btn">
+            Skip ▸▸
+          </button>
+        </div>
 
-          <div id="ready-area" class="ready-area hidden">
-            <div id="ready-list" class="pg-ready-list"></div>
-            <div class="pg-actions">
-              <button id="ready-button" class="ready-btn hidden">Ready for Next Round</button>
-              <button id="force-start-button" class="pg-btn hidden">Force Start</button>
-              <button id="join-game-button" class="pg-btn">Join Game</button>
-              <button id="view-results-button" class="pg-btn">View Full Results</button>
-              <button id="exit-room-button" class="pg-btn">Exit Room</button>
-            </div>
-          </div>
+        <!-- ========================= -->
+        <!-- READY AREA                -->
+        <!-- ========================= -->
+        <div id="ready-area" class="ready-area hidden">
+          <div id="ready-list" class="pg-ready-list"></div>
 
-          <div class="score-panel" id="score-panel">
-            <div class="sp-row"><span>Front:</span><span id="sp-front"></span></div>
-            <div class="sp-row"><span>Mid:</span><span id="sp-mid"></span></div>
-            <div class="sp-row"><span>Back:</span><span id="sp-back"></span></div>
-            <div class="sp-row sp-total"><span>Total:</span><span id="sp-total"></span></div>
+          <div class="pg-actions">
+            <button id="ready-button" class="ready-btn hidden">
+              Ready for Next Round
+            </button>
+
+            <button id="force-start-button" class="pg-btn hidden">
+              Force Start
+            </button>
+
+            <button id="view-results-button" class="pg-btn">
+              View Full Results
+            </button>
           </div>
         </div>
 
-        <!-- RESULTS -->
+        <!-- ========================= -->
+        <!-- SCORE PANEL               -->
+        <!-- ========================= -->
+        <div id="score-panel" class="score-panel">
+          <div class="sp-row">
+            <span>Front</span>
+            <span id="sp-front"></span>
+          </div>
+
+          <div class="sp-row">
+            <span>Mid</span>
+            <span id="sp-mid"></span>
+          </div>
+
+          <div class="sp-row">
+            <span>Back</span>
+            <span id="sp-back"></span>
+          </div>
+
+          <div class="sp-row sp-total">
+            <span>Total</span>
+            <span id="sp-total"></span>
+          </div>
+        </div>
+
+        <!-- ========================= -->
+        <!-- RESULTS SECTION           -->
+        <!-- ========================= -->
         <div id="results-section" class="pg-panel hidden">
-          <button id="close-results-button" class="close-panel-btn" title="Close">✕</button>
+          <button id="close-results-button" class="close-panel-btn">
+            ✕
+          </button>
+
           <div id="result-summary" class="pg-result-summary"></div>
+
           <div id="result-boards" class="pg-boards"></div>
 
-          <div class="hidden">
-            <table id="result-table"></table>
-            <div id="result-details"></div>
-          </div>
+          <table id="result-table" class="hidden"></table>
+
+          <div id="result-details" class="hidden"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================= -->
+    <!-- ADMIN SCREEN              -->
+    <!-- ========================= -->
+    <div id="admin-screen" class="screen hidden">
+      <div class="panel wide-panel">
+        <div class="controls">
+          <button id="admin-back-button" class="btn-secondary">
+            ← Back
+          </button>
         </div>
 
-      </div>
-    </section>
-
-    <!-- ADMIN -->
-    <section id="admin-screen" class="screen hidden">
-      <div class="panel wide-panel">
         <h2>Admin Panel</h2>
-        <button id="admin-back-button" class="small-button">Back</button>
+
+        <div id="admin-message" class="message"></div>
 
         <div class="admin-grid">
           <div class="admin-section">
             <h3>Player Management</h3>
 
             <div class="form-group">
-              <label>Search Users</label>
-              <input id="admin-user-search" type="text" placeholder="Type to filter..." autocomplete="off" />
+              <label for="admin-user-search">Search Users</label>
+              <input id="admin-user-search" type="text" autocomplete="off" />
             </div>
 
             <div id="admin-user-list" class="admin-user-list"></div>
@@ -355,35 +563,51 @@
             <div class="admin-divider"></div>
 
             <div class="form-group">
-              <label>Username</label>
+              <label for="admin-player-username">Username</label>
               <input id="admin-player-username" type="text" autocomplete="off" />
             </div>
 
-            <button id="admin-load-player-button" class="secondary-button">Load Player</button>
+            <div class="controls">
+              <button id="admin-load-player-button" class="btn-secondary">
+                Load Player
+              </button>
+            </div>
 
             <div id="admin-player-info" class="panel-sub"></div>
 
             <div class="form-group">
-              <label>Display Name</label>
-              <input id="admin-display-name" type="text" />
+              <label for="admin-display-name">Display Name</label>
+              <input id="admin-display-name" type="text" autocomplete="off" />
             </div>
 
-            <button id="admin-save-name-button" class="secondary-button">Save Display Name</button>
+            <div class="controls">
+              <button id="admin-save-name-button" class="btn-secondary">
+                Save Display Name
+              </button>
+            </div>
 
             <div class="form-group">
-              <label>Cash Amount</label>
+              <label for="admin-cash-amount">Cash Amount</label>
               <input id="admin-cash-amount" type="number" />
             </div>
 
             <div class="form-group">
-              <label>Reason</label>
-              <input id="admin-cash-reason" type="text" />
+              <label for="admin-cash-reason">Reason</label>
+              <input id="admin-cash-reason" type="text" autocomplete="off" />
             </div>
 
             <div class="controls">
-              <button id="admin-add-cash-button" class="secondary-button">Add Cash</button>
-              <button id="admin-deduct-cash-button" class="secondary-button">Deduct Cash</button>
-              <button id="admin-set-cash-button" class="secondary-button">Set Cash</button>
+              <button id="admin-add-cash-button" class="btn-primary">
+                Add Cash
+              </button>
+
+              <button id="admin-deduct-cash-button" class="btn-secondary">
+                Deduct Cash
+              </button>
+
+              <button id="admin-set-cash-button" class="btn-secondary">
+                Set Cash
+              </button>
             </div>
           </div>
 
@@ -391,12 +615,12 @@
             <h3>Current Room Settings</h3>
 
             <div class="form-group">
-              <label>Minimum Bet</label>
+              <label for="admin-room-min-bet">Minimum Bet</label>
               <input id="admin-room-min-bet" type="number" />
             </div>
 
             <div class="form-group">
-              <label>Bot Level</label>
+              <label for="admin-room-bot-level">Bot Level</label>
               <select id="admin-room-bot-level">
                 <option value="easy">Easy</option>
                 <option value="normal">Normal</option>
@@ -405,44 +629,99 @@
             </div>
 
             <div class="form-group">
-              <label>Arrange Timer Seconds</label>
+              <label for="admin-room-arrange-timer">Arrange Timer Seconds</label>
               <input id="admin-room-arrange-timer" type="number" />
             </div>
 
             <div class="form-group">
-              <label>Ready Timer Seconds</label>
+              <label for="admin-room-ready-timer">Ready Timer Seconds</label>
               <input id="admin-room-ready-timer" type="number" />
             </div>
 
-            <div class="form-group">
-              <label>
-                <input id="admin-room-auto-fill-bots" type="checkbox" />
-                Auto-fill bots
-              </label>
-            </div>
+            <label class="fp-check">
+              <input id="admin-room-auto-fill-bots" type="checkbox" checked />
+              Auto-fill bots
+            </label>
 
-            <div class="form-group">
-              <label>
-                <input id="admin-room-scoop-bonus" type="checkbox" />
-                Scoop bonus +3
-              </label>
-            </div>
+            <label class="fp-check">
+              <input id="admin-room-scoop-bonus" type="checkbox" checked />
+              Scoop bonus +3
+            </label>
 
             <div class="controls">
-              <button id="admin-save-room-button" class="secondary-button">Save Room Settings</button>
-              <button id="admin-fill-bots-button" class="secondary-button">Fill Bots</button>
-              <button id="admin-force-start-button" class="secondary-button">Force Start / Next Round</button>
+              <button id="admin-save-room-button" class="btn-primary">
+                Save Room Settings
+              </button>
+
+              <button id="admin-fill-bots-button" class="btn-secondary">
+                Fill Bots
+              </button>
+
+              <button id="admin-force-start-button" class="btn-secondary">
+                Force Start / Next Round
+              </button>
             </div>
           </div>
         </div>
-
-        <p id="admin-message" class="message"></p>
       </div>
-    </section>
-
+    </div>
   </div>
 
+  <!-- ========================= -->
+  <!-- SEND MONEY OVERLAY        -->
+  <!-- ========================= -->
+  <div id="send-money-form" class="hidden">
+    <div class="send-modal">
+      <h3>💸 Send Money</h3>
+
+      <div class="form-group">
+        <label for="send-username">Recipient Username</label>
+        <input id="send-username" type="text" autocomplete="off" />
+      </div>
+
+      <div class="form-group">
+        <label for="send-amount">Amount</label>
+        <input id="send-amount" type="number" min="1" />
+      </div>
+
+      <div class="form-group">
+        <label for="send-note">Note (optional)</label>
+        <input id="send-note" type="text" autocomplete="off" />
+      </div>
+
+      <div id="send-money-error" class="error"></div>
+      <div id="send-money-message" class="message"></div>
+
+      <div class="controls">
+        <button id="send-money-button" class="btn-primary">
+          Send
+        </button>
+
+        <button id="cancel-send-money-button" class="btn-secondary">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================= -->
+  <!-- TRANSACTION HISTORY PANEL -->
+  <!-- ========================= -->
+  <div id="transaction-history-panel" class="hidden">
+    <div class="tx-modal">
+      <button id="close-transaction-history-button" class="close-panel-btn">
+        ✕
+      </button>
+
+      <h3>Recent Transactions</h3>
+
+      <div id="transaction-history" class="tx-list"></div>
+    </div>
+  </div>
+
+  <!-- ========================= -->
+  <!-- APP ENTRY POINT           -->
+  <!-- ========================= -->
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>
-
