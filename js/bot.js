@@ -37,7 +37,6 @@ export function botArrangeHand(hand, difficulty = "normal") {
 
   for (const back of choose(sortedHand, 5)) {
     const evaluated = evaluate5(back);
-
     backCandidates.push({
       back,
       score: strength5(evaluated)
@@ -45,7 +44,6 @@ export function botArrangeHand(hand, difficulty = "normal") {
   }
 
   backCandidates.sort((a, b) => b.score - a.score);
-
   const topBacks = backCandidates.slice(0, backLimit);
 
   let best = null;
@@ -69,7 +67,7 @@ export function botArrangeHand(hand, difficulty = "normal") {
       let score = arrangementScore(arrangement);
 
       if (difficulty === "easy") {
-        score += Math.random() * 2_000_000;
+        score += Math.random() * 2000000;
       }
 
       if (!best || score > best.score) {
