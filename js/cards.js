@@ -5,32 +5,28 @@ const RANK_VALUES = Object.fromEntries(RANKS.map((rank, index) => [rank, index +
 const SUIT_VALUES = Object.fromEntries(SUITS.map((suit, index) => [suit, index]));
 
 const SUIT_SYMBOLS = {
-  C: "♣",
-  D: "♦",
-  H: "♥",
-  S: "♠"
+  C: "\u2663",
+  D: "\u2666",
+  H: "\u2665",
+  S: "\u2660"
 };
 
 export function buildDeck() {
   const deck = [];
-
   for (const suit of SUITS) {
     for (const rank of RANKS) {
       deck.push(rank + suit);
     }
   }
-
   return deck;
 }
 
 export function shuffle(input) {
   const deck = [...input];
-
   for (let i = deck.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [deck[i], deck[j]] = [deck[j], deck[i]];
   }
-
   return deck;
 }
 
