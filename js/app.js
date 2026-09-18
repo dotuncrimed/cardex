@@ -10,7 +10,8 @@ import {
   listenUser, startRound, finishRound, submitArrangement, setReady,
   fillBotsInRoom, replaceUnreadyWithBots, updateRoomSettings, getUserData,
   adjustCash, setCash, updateDisplayName, addAdminLog, listenAllUsers,
-  listenAllRooms, spectateRoom, sweepStaleRooms, claimDailyBonus, transferCash
+  listenAllRooms, spectateRoom, sweepStaleRooms, claimDailyBonus,
+  transferCash, heartbeatRoom
 } from "./db.js";
 
 const state = {
