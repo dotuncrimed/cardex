@@ -53,18 +53,10 @@ export function calculateResults(room, handsMap) {
     details[p.uid] = [];
 
     const hd = handsMap[p.uid];
-
-    // Detect special hand FIRST
     let spec = hd && hd.special ? hd.special : null;
-
-    if (!spec && hd && hd.hand) {
-      spec = detectSpecial(hd.hand);
-    }
-
+    if (!spec && hd && hd.hand) spec = detectSpecial(hd.hand);
     specials[p.uid] = spec;
 
-    // IMPORTANT FIX:
-    // A special hand must never be marked as fouled
     fouledMap[p.uid] = spec ? false : isFouled(hd);
   });
 
