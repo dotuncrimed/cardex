@@ -1,3 +1,4 @@
+import { listenUserTransactions } from "./db.js";
 import { isFirebaseConfigured } from "./firebase.js";
 import { watchAuth, loginOrRegister, logoutUser } from "./auth.js";
 import { ADMIN_PASSWORD } from "./config.js";
@@ -5,12 +6,11 @@ import { rankOf, suitOf, suitSymbol, isRedSuit, sortCards } from "./cards.js";
 import { isLegalArrangement, evaluate5, evaluate3, compare5 } from "./evaluator.js";
 import { botArrangeHand } from "./bot.js";
 import {
-  listenUserTransactions, createRoom, joinRoomByCode, takeSeat, leaveRoom,
-  listenRoom, listenOwnHand, listenUser, startRound, finishRound,
-  submitArrangement, setReady, fillBotsInRoom, replaceUnreadyWithBots,
-  updateRoomSettings, getUserData, adjustCash, setCash, updateDisplayName,
-  addAdminLog, listenAllUsers, listenAllRooms, spectateRoom, sweepStaleRooms,
-  claimDailyBonus, transferCash
+  createRoom, joinRoomByCode, takeSeat, leaveRoom, listenRoom, listenOwnHand,
+  listenUser, startRound, finishRound, submitArrangement, setReady,
+  fillBotsInRoom, replaceUnreadyWithBots, updateRoomSettings, getUserData,
+  adjustCash, setCash, updateDisplayName, addAdminLog, listenAllUsers,
+  listenAllRooms, spectateRoom, sweepStaleRooms, claimDailyBonus, transferCash
 } from "./db.js";
 
 const state = {
@@ -129,7 +129,7 @@ function clearRevealTimers() {
 
 function clearRoomState() {
   clearRoomListeners();
-  Object.values(state.cashListeners || {}).forEach((unsub) => { if (unsub) unsub(); });
+  Object.values(state.cashListeners || {}).forEach((un) => un && un());
   state.cashListeners = {};
   state.cashMap = {};
   state.room = null;
@@ -220,15 +220,18 @@ function flyCoinsToWinner(winnerUid) {
   const layer = document.querySelector(".pg-table");
   const winner = state.room.players.find((p) => p.uid === winnerUid);
   if (!layer || !winner) return;
+
   const myPlayer = currentUserPlayerObject();
   const mySeat = myPlayer ? myPlayer.seat : 0;
   const pos = SEAT_POS[seatOffset(winner.seat, mySeat)];
   const target = document.querySelector("#seat-" + pos);
   if (!target) return;
+
   const lR = layer.getBoundingClientRect();
   const tR = target.getBoundingClientRect();
   const sx = lR.width / 2;
   const sy = lR.height / 2;
+
   for (let i = 0; i < 14; i++) {
     const c = document.createElement("div");
     c.className = "fly-coin";
@@ -527,8 +530,8 @@ function renderLobbySection() {
   if (fillBotsButton) fillBotsButton.classList.toggle("hidden", !isHost() || !["lobby", "round_end"].includes(status));
   const canTakeSeat = currentUserInRoomSpectators() && ["lobby", "round_end"].includes(status);
   if (takeSeatButton) takeSeatButton.classList.toggle("hidden", !canTakeSeat);
-  
-  // Toggle Join Game button in Lobby for spectators
+
+  // Spectator Join Game button in Lobby
   const joinGameLobbyBtn = $("#join-game-button");
   if (joinGameLobbyBtn) {
     const hasMoney = state.userData && Number(state.userData.cash) >= Number(state.room?.settings?.minBet || 0);
@@ -620,7 +623,9 @@ function renderRevealSlot(pos, player, arrangement, row, rowScore, cumulative) {
   slot.innerHTML = "";
   const banner = document.createElement("div");
   banner.className = "reveal-banner";
-  banner.innerHTML = `<span class="rb-name">${rowNameFor(arrangement, row)}</span><span class="rb-pts ${rowScore >= 0 ? "pos" : "neg"}">${rowScore >= 0 ? "+" : ""}${rowScore}</span>`;
+  banner.innerHTML =
+    `<span class="rb-name">${rowNameFor(arrangement, row)}</span>` +
+    `<span class="rb-pts ${rowScore >= 0 ? "pos" : "neg"}">${rowScore >= 0 ? "+" : ""}${rowScore}</span>`;
   const cards = document.createElement("div");
   cards.className = "reveal-cards";
   ((arrangement && arrangement[row]) || []).forEach((card, index) => {
@@ -661,13 +666,14 @@ function finalizeReveal() {
   if (skip) skip.classList.add("hidden");
   const readyArea = document.getElementById("ready-area");
   if (readyArea) readyArea.classList.remove("hidden");
-  
+
   // FEATURE 3: coins fly to the winner (once per round)
   if (state.room && state.room.results && state.coinsFlyedFor !== state.room.roundNumber) {
     const winner = state.room.results.rankings && state.room.results.rankings[0];
     if (winner) flyCoinsToWinner(winner.uid);
     state.coinsFlyedFor = state.room.roundNumber;
   }
+
   renderReadyArea();
 }
 
@@ -678,7 +684,7 @@ function skipReveal() {
   const myPlayer = currentUserPlayerObject();
   const mySeat = myPlayer ? myPlayer.seat : 0;
 
-  // SPECIAL HAND ANNOUNCEMENT - SKIP REVEAL
+  // SPECIAL HAND ANNOUNCEMENT (skip path)
   const specialPlayers = [];
   state.room.players.forEach((pl) => {
     const spec = results.specials ? results.specials[pl.uid] : null;
@@ -714,7 +720,7 @@ function playRevealSequence(results) {
   ["top", "left", "right", "bottom"].forEach((p) => { const el = document.getElementById("reveal-" + p); if (el) el.innerHTML = ""; });
   updateScorePanel(results, state.user.uid, []);
 
-  // SPECIAL HAND ANNOUNCEMENT - NORMAL REVEAL
+  // SPECIAL HAND ANNOUNCEMENT (normal reveal path)
   const specialPlayers = [];
   state.room.players.forEach((pl) => {
     const spec = results.specials ? results.specials[pl.uid] : null;
@@ -1006,7 +1012,12 @@ function renderResultsSection() {
         let matchText = "Tied";
         if (detail.matchResult === "win") matchText = "Won";
         if (detail.matchResult === "lose") matchText = "Lost";
-        row.innerHTML = `vs ${detail.opponentName}: Front <span class="${colorClass(detail.rows.front)}">${icon(detail.rows.front)}</span> Middle <span class="${colorClass(detail.rows.middle)}">${icon(detail.rows.middle)}</span> Back <span class="${colorClass(detail.rows.back)}">${icon(detail.rows.back)}</span> — ${matchText}`;
+        row.innerHTML = `
+          vs ${detail.opponentName}:
+          Front <span class="${colorClass(detail.rows.front)}">${icon(detail.rows.front)}</span>
+          Middle <span class="${colorClass(detail.rows.middle)}">${icon(detail.rows.middle)}</span>
+          Back <span class="${colorClass(detail.rows.back)}">${icon(detail.rows.back)}</span>
+          — ${matchText}`;
         wrapper.appendChild(row);
       });
       resultDetails.appendChild(wrapper);
@@ -1015,7 +1026,7 @@ function renderResultsSection() {
   renderResultBoards(results);
   renderReadyArea();
 
-  // Toggle Join Game Button in Results Overlay
+  // Spectator Join Game button in Results Overlay
   const joinGameResultsBtn = $("#join-game-results-button");
   if (joinGameResultsBtn) {
     const isSpectator = currentUserInRoomSpectators();
@@ -1039,7 +1050,11 @@ function renderReadyArea() {
   const rankMap = {};
   if (results && results.rankings) {
     results.rankings.forEach((r, idx) => {
-      rankMap[r.uid] = { rank: idx + 1, points: r.scorePoints, net: r.netCoins, prize: r.prize, fouled: r.fouled, scoops: r.scoops || 0, royalties: r.royalties || 0, special: r.special || null, isWinner: idx === 0 };
+      rankMap[r.uid] = {
+        rank: idx + 1, points: r.scorePoints, net: r.netCoins, prize: r.prize,
+        fouled: r.fouled, scoops: r.scoops || 0, royalties: r.royalties || 0,
+        special: r.special || null, isWinner: idx === 0
+      };
     });
   }
   players.forEach((player) => {
@@ -1050,7 +1065,7 @@ function renderReadyArea() {
     div.className = `player-row ready-status-row ${player.ready ? "ready" : "not-ready"} ${isWinner ? "winner" : ""} ${isFouled ? "fouled" : ""}`;
     const readyIcon = player.ready ? "✅" : "❌";
     const statusText = player.ready ? "Ready" : "Waiting...";
-    const youText = state.user && player.uid === state.user.uid ? " (You)" : "";
+    const youText = (state.user && player.uid === state.user.uid) ? " (You)" : "";
     let rankBadge = "";
     if (rankInfo) {
       if (isWinner) rankBadge = `<span class="winner-badge">🏆 WINNER</span>`;
@@ -1067,7 +1082,11 @@ function renderReadyArea() {
         rankBadge += `<span class="net-badge">${netStr}</span>`;
       }
     }
-    div.innerHTML = `<span class="ready-icon">${readyIcon}</span><span class="player-name">${player.displayName}${youText}</span><div class="player-badges">${rankBadge}</div><span class="ready-text">${statusText}</span>`;
+    div.innerHTML = `
+      <span class="ready-icon">${readyIcon}</span>
+      <span class="player-name">${player.displayName}${youText}</span>
+      <div class="player-badges">${rankBadge}</div>
+      <span class="ready-text">${statusText}</span>`;
     if (readyList) readyList.appendChild(div);
   });
   const me = currentUserPlayerObject();
@@ -1076,7 +1095,7 @@ function renderReadyArea() {
   const showForceStart = isHost();
   if (forceStartButton) forceStartButton.classList.toggle("hidden", !showForceStart);
 
-  // Toggle Join Game Button in Ready Area
+  // Spectator Join Game button in Ready Area
   const joinGameReadyBtn = $("#join-game-ready-button");
   if (joinGameReadyBtn) {
     const isSpectator = currentUserInRoomSpectators();
@@ -1153,25 +1172,42 @@ async function hostController() {
   if (now < (state.hostCooldownUntil || 0)) return;
   const room = state.room;
   const humans = room.players.filter((p) => !p.isBot);
-  const fail = () => { state.hostFailCount = (state.hostFailCount || 0) + 1; if (state.hostFailCount >= 3) { state.hostCooldownUntil = Date.now() + 10000; state.hostFailCount = 0; } };
+  const fail = () => {
+    state.hostFailCount = (state.hostFailCount || 0) + 1;
+    if (state.hostFailCount >= 3) { state.hostCooldownUntil = Date.now() + 10000; state.hostFailCount = 0; console.warn("hostController backing off 10s"); }
+  };
   const succeed = () => { state.hostFailCount = 0; };
   if (room.status === "scoring") {
     const stuckFor = Date.now() - (room.updatedAt || 0);
-    if (stuckFor > 20000) { state.hostBusy = true; try { await finishRound(room.roomCode, state.user); succeed(); } catch (error) { fail(); } finally { state.hostBusy = false; } }
+    if (stuckFor > 20000) {
+      console.warn("Scoring stuck for 20s, retrying finishRound");
+      state.hostBusy = true;
+      try { await finishRound(room.roomCode, state.user); succeed(); } catch (error) { console.error(error); fail(); } finally { state.hostBusy = false; }
+    }
     return;
   }
   if (room.status === "arranging") {
     const allSubmitted = room.players.every((p) => p.submitted);
     const timerExpired = room.phaseEndsAt && Date.now() > room.phaseEndsAt;
-    const gracePeriod = timerExpired && Date.now() - room.phaseEndsAt > 10000;
-    if (allSubmitted || gracePeriod) { state.hostBusy = true; try { await finishRound(room.roomCode, state.user); succeed(); } catch (error) { fail(); } finally { state.hostBusy = false; } }
+    const gracePeriod = timerExpired && (Date.now() - room.phaseEndsAt > 10000);
+    if (allSubmitted || gracePeriod) {
+      state.hostBusy = true;
+      try { await finishRound(room.roomCode, state.user); succeed(); } catch (error) { console.error(error); fail(); } finally { state.hostBusy = false; }
+    }
     return;
   }
   if (room.status === "round_end") {
     if (humans.length === 0) return;
     const readyHumans = humans.filter((p) => p.ready);
-    if (readyHumans.length === humans.length) { state.hostBusy = true; try { await sleep(800); await startRound(room.roomCode, state.user); succeed(); } catch (error) { setRoomMessage(error.message || "Failed to start next round."); fail(); } finally { state.hostBusy = false; } return; }
-    if (room.phaseEndsAt && Date.now() > room.phaseEndsAt && readyHumans.length > 0) { state.hostBusy = true; try { await replaceUnreadyWithBots(room.roomCode); await startRound(room.roomCode, state.user); succeed(); } catch (error) { fail(); } finally { state.hostBusy = false; } }
+    if (readyHumans.length === humans.length) {
+      state.hostBusy = true;
+      try { await sleep(800); await startRound(room.roomCode, state.user); succeed(); } catch (error) { console.error(error); setRoomMessage(error.message || "Failed to start next round."); fail(); } finally { state.hostBusy = false; }
+      return;
+    }
+    if (room.phaseEndsAt && Date.now() > room.phaseEndsAt && readyHumans.length > 0) {
+      state.hostBusy = true;
+      try { await replaceUnreadyWithBots(room.roomCode); await startRound(room.roomCode, state.user); succeed(); } catch (error) { console.error(error); fail(); } finally { state.hostBusy = false; }
+    }
   }
 }
 
@@ -1214,7 +1250,11 @@ watchAuth((user) => {
   if (state.unsubUser) { state.unsubUser(); state.unsubUser = null; }
   if (state.unsubTransactions) { state.unsubTransactions(); state.unsubTransactions = null; state.transactions = []; }
   if (!user) { clearRoomState(); showScreen("login"); return; }
-  state.unsubUser = listenUser(user.username, (userData) => { state.userData = userData; renderMenu(); renderReadyArea(); });
+  state.unsubUser = listenUser(user.username, (userData) => {
+    state.userData = userData;
+    renderMenu();
+    renderReadyArea();
+  });
   renderMenu();
   syncRoomsListener();
   if (state.roomId) enterRoom(state.roomId);
@@ -1243,66 +1283,48 @@ setInterval(() => {
   hostController();
 }, 700);
 
-const loginButton = $("#login-button");
-if (loginButton) {
-  loginButton.addEventListener("click", async () => {
-    const username = $("#login-username").value;
-    const pin = $("#login-pin").value;
-    setText("#login-error", "");
-    try { await loginOrRegister(username, pin); } catch (error) { setText("#login-error", error.message || "Login failed."); }
-  });
-}
+$("#login-button").addEventListener("click", async () => {
+  const username = $("#login-username").value;
+  const pin = $("#login-pin").value;
+  setText("#login-error", "");
+  try { await loginOrRegister(username, pin); } catch (error) { setText("#login-error", error.message || "Login failed."); }
+});
 
-const logoutButton = $("#logout-button");
-if (logoutButton) logoutButton.addEventListener("click", async () => { clearRoomState(); await logoutUser(); });
+$("#logout-button").addEventListener("click", async () => { clearRoomState(); await logoutUser(); });
+$("#show-create-room-button").addEventListener("click", () => { $("#create-room-form").classList.remove("hidden"); $("#join-room-form").classList.add("hidden"); });
+$("#cancel-create-room-button").addEventListener("click", () => { $("#create-room-form").classList.add("hidden"); });
+$("#show-join-room-button").addEventListener("click", () => { $("#join-room-form").classList.remove("hidden"); $("#create-room-form").classList.add("hidden"); });
+$("#cancel-join-room-button").addEventListener("click", () => { $("#join-room-form").classList.add("hidden"); });
 
-const showCreateRoomButton = $("#show-create-room-button");
-if (showCreateRoomButton) showCreateRoomButton.addEventListener("click", () => { $("#create-room-form").classList.remove("hidden"); $("#join-room-form").classList.add("hidden"); });
+$("#create-room-button").addEventListener("click", async () => {
+  setText("#create-room-error", "");
+  if (!state.user || !state.userData) { setText("#create-room-error", "Not logged in."); return; }
+  const settings = {
+    minBet: Number($("#create-min-bet").value) || 0,
+    arrangeTimerSeconds: Number($("#create-arrange-timer").value) || 0,
+    readyTimerSeconds: Number($("#create-ready-timer").value) || 0,
+    botLevel: $("#create-bot-level").value,
+    autoFillBots: $("#create-auto-fill-bots").checked,
+    scoopBonus: $("#create-scoop-bonus").checked,
+    autoArrange: $("#create-auto-arrange").checked
+  };
+  try {
+    const code = await createRoom({ ...state.user, displayName: state.userData.displayName || state.user.username }, settings);
+    $("#create-room-form").classList.add("hidden");
+    await enterRoom(code);
+  } catch (error) { setText("#create-room-error", error.message || "Failed to create room."); }
+});
 
-const cancelCreateRoomButton = $("#cancel-create-room-button");
-if (cancelCreateRoomButton) cancelCreateRoomButton.addEventListener("click", () => { $("#create-room-form").classList.add("hidden"); });
-
-const showJoinRoomButton = $("#show-join-room-button");
-if (showJoinRoomButton) showJoinRoomButton.addEventListener("click", () => { $("#join-room-form").classList.remove("hidden"); $("#create-room-form").classList.add("hidden"); });
-
-const cancelJoinRoomButton = $("#cancel-join-room-button");
-if (cancelJoinRoomButton) cancelJoinRoomButton.addEventListener("click", () => { $("#join-room-form").classList.add("hidden"); });
-
-const createRoomButton = $("#create-room-button");
-if (createRoomButton) {
-  createRoomButton.addEventListener("click", async () => {
-    setText("#create-room-error", "");
-    if (!state.user || !state.userData) { setText("#create-room-error", "Not logged in."); return; }
-    const settings = {
-      minBet: Number($("#create-min-bet").value) || 0,
-      arrangeTimerSeconds: Number($("#create-arrange-timer").value) || 0,
-      readyTimerSeconds: Number($("#create-ready-timer").value) || 0,
-      botLevel: $("#create-bot-level").value,
-      autoFillBots: $("#create-auto-fill-bots").checked,
-      scoopBonus: $("#create-scoop-bonus").checked,
-      autoArrange: $("#create-auto-arrange").checked
-    };
-    try {
-      const code = await createRoom({ ...state.user, displayName: state.userData.displayName || state.user.username }, settings);
-      $("#create-room-form").classList.add("hidden");
-      await enterRoom(code);
-    } catch (error) { setText("#create-room-error", error.message || "Failed to create room."); }
-  });
-}
-
-const joinRoomButton = $("#join-room-button");
-if (joinRoomButton) {
-  joinRoomButton.addEventListener("click", async () => {
-    setText("#join-room-error", "");
-    if (!state.user || !state.userData) { setText("#join-room-error", "Not logged in."); return; }
-    const code = $("#join-room-code").value;
-    try {
-      const roomId = await joinRoomByCode(state.user, code, state.userData.displayName || state.user.username);
-      $("#join-room-form").classList.add("hidden");
-      await enterRoom(roomId);
-    } catch (error) { setText("#join-room-error", error.message || "Failed to join room."); }
-  });
-}
+$("#join-room-button").addEventListener("click", async () => {
+  setText("#join-room-error", "");
+  if (!state.user || !state.userData) { setText("#join-room-error", "Not logged in."); return; }
+  const code = $("#join-room-code").value;
+  try {
+    const roomId = await joinRoomByCode(state.user, code, state.userData.displayName || state.user.username);
+    $("#join-room-form").classList.add("hidden");
+    await enterRoom(roomId);
+  } catch (error) { setText("#join-room-error", error.message || "Failed to join room."); }
+});
 
 async function exitToMenu() {
   try { if (state.roomId && state.user) await leaveRoom(state.user, state.roomId); } catch (error) { console.warn("leaveRoom failed, escaping locally:", error); }
@@ -1311,11 +1333,8 @@ async function exitToMenu() {
   syncRoomsListener();
 }
 
-const leaveRoomButton = $("#leave-room-button");
-if (leaveRoomButton) leaveRoomButton.addEventListener("click", exitToMenu);
-
-const exitRoomButton = $("#exit-room-button");
-if (exitRoomButton) exitRoomButton.addEventListener("click", exitToMenu);
+$("#leave-room-button").addEventListener("click", exitToMenu);
+$("#exit-room-button").addEventListener("click", exitToMenu);
 
 async function handleJoinGame() {
   try {
@@ -1328,130 +1347,92 @@ async function handleJoinGame() {
 
 const joinGameButton = $("#join-game-button");
 if (joinGameButton) joinGameButton.addEventListener("click", handleJoinGame);
-
 const joinGameReadyBtn = $("#join-game-ready-button");
 if (joinGameReadyBtn) joinGameReadyBtn.addEventListener("click", handleJoinGame);
-
 const joinGameResultsBtn = $("#join-game-results-button");
 if (joinGameResultsBtn) joinGameResultsBtn.addEventListener("click", handleJoinGame);
 
-const startRoomButton = $("#start-room-button");
-if (startRoomButton) startRoomButton.addEventListener("click", async () => { try { await startRound(state.roomId, state.user); } catch (error) { setRoomMessage(error.message || "Failed to start round."); } });
+$("#start-room-button").addEventListener("click", async () => { try { await startRound(state.roomId, state.user); } catch (error) { setRoomMessage(error.message || "Failed to start round."); } });
+$("#fill-bots-button").addEventListener("click", async () => { try { await fillBotsInRoom(state.roomId); } catch (error) { setRoomMessage(error.message || "Failed to fill bots."); } });
+$("#take-seat-button").addEventListener("click", async () => { try { await takeSeat(state.user, state.roomId, state.userData?.displayName || state.user.username); } catch (error) { setRoomMessage(error.message || "Failed to take seat."); } });
+$("#auto-arrange-button").addEventListener("click", () => { if (!state.handData || !state.handData.hand) return; state.arrangement = botArrangeHand(state.handData.hand, "hard"); state.selectedCards.clear(); renderArrangeSection(); });
+$("#clear-arrangement-button").addEventListener("click", () => { autoPlaceFromHand(); renderArrangeSection(); });
+$("#submit-arrangement-button").addEventListener("click", async () => { await submitHumanArrangement(); });
+$("#ready-button").addEventListener("click", async () => { try { await setReady(state.roomId, state.user.uid, true); } catch (error) { setRoomMessage(error.message || "Failed to ready."); } });
+$("#force-start-button").addEventListener("click", async () => { try { await replaceUnreadyWithBots(state.roomId); await startRound(state.roomId, state.user); } catch (error) { setRoomMessage(error.message || "Failed force start."); } });
+$("#admin-button").addEventListener("click", showAdminScreen);
+$("#room-admin-button").addEventListener("click", showAdminScreen);
+$("#admin-back-button").addEventListener("click", () => {
+  if (state.adminUnsub) { state.adminUnsub(); state.adminUnsub = null; }
+  if (state.roomId) showScreen("room");
+  else showScreen("menu");
+});
 
-const fillBotsButton = $("#fill-bots-button");
-if (fillBotsButton) fillBotsButton.addEventListener("click", async () => { try { await fillBotsInRoom(state.roomId); } catch (error) { setRoomMessage(error.message || "Failed to fill bots."); } });
+$("#admin-load-player-button").addEventListener("click", async () => {
+  const username = $("#admin-player-username").value.trim().toLowerCase();
+  if (!username) { setAdminMessage("Enter a username."); return; }
+  const userData = await getUserData(username);
+  if (!userData) { setText("#admin-player-info", "User not found."); return; }
+  const infoBox = $("#admin-player-info");
+  if (infoBox) infoBox.innerHTML = `<div>Username: ${userData.username}</div><div>Display Name: ${userData.displayName}</div><div>Cash: ${userData.cash}</div><div>Games: ${userData.games || 0}</div><div>Wins: ${userData.wins || 0}</div><div>Points: ${userData.points || 0}</div>`;
+  const nameField = $("#admin-display-name");
+  if (nameField) nameField.value = userData.displayName || "";
+});
 
-const takeSeatButton = $("#take-seat-button");
-if (takeSeatButton) takeSeatButton.addEventListener("click", async () => { try { await takeSeat(state.user, state.roomId, state.userData?.displayName || state.user.username); } catch (error) { setRoomMessage(error.message || "Failed to take seat."); } });
+$("#admin-save-name-button").addEventListener("click", async () => {
+  const username = $("#admin-player-username").value.trim().toLowerCase();
+  const displayName = $("#admin-display-name").value.trim();
+  if (!username || !displayName) { setAdminMessage("Username and display name required."); return; }
+  try { await updateDisplayName(username, displayName, state.user?.username || "admin"); setAdminMessage("Display name updated."); } catch (error) { setAdminMessage(error.message || "Failed to update display name."); }
+});
 
-const autoArrangeButton = $("#auto-arrange-button");
-if (autoArrangeButton) autoArrangeButton.addEventListener("click", () => { if (!state.handData || !state.handData.hand) return; state.arrangement = botArrangeHand(state.handData.hand, "hard"); state.selectedCards.clear(); renderArrangeSection(); });
+$("#admin-add-cash-button").addEventListener("click", async () => {
+  const username = $("#admin-player-username").value.trim().toLowerCase();
+  const amount = Number($("#admin-cash-amount").value) || 0;
+  const reason = $("#admin-cash-reason").value;
+  if (!username || amount <= 0) { setAdminMessage("Enter username and positive amount."); return; }
+  try { await adjustCash(username, amount, "admin_transfer", reason, state.user?.username || "admin"); await addAdminLog(state.user?.username || "admin", "add_cash", username, { amount, reason }); setAdminMessage("Cash added."); } catch (error) { setAdminMessage(error.message || "Failed to add cash."); }
+});
 
-const clearArrangementButton = $("#clear-arrangement-button");
-if (clearArrangementButton) clearArrangementButton.addEventListener("click", () => { autoPlaceFromHand(); renderArrangeSection(); });
+$("#admin-deduct-cash-button").addEventListener("click", async () => {
+  const username = $("#admin-player-username").value.trim().toLowerCase();
+  const amount = Number($("#admin-cash-amount").value) || 0;
+  const reason = $("#admin-cash-reason").value;
+  if (!username || amount <= 0) { setAdminMessage("Enter username and positive amount."); return; }
+  try { await adjustCash(username, -amount, "admin_deduct", reason, state.user?.username || "admin"); await addAdminLog(state.user?.username || "admin", "deduct_cash", username, { amount, reason }); setAdminMessage("Cash deducted."); } catch (error) { setAdminMessage(error.message || "Failed to deduct cash."); }
+});
 
-const submitArrangementButton = $("#submit-arrangement-button");
-if (submitArrangementButton) submitArrangementButton.addEventListener("click", async () => { await submitHumanArrangement(); });
+$("#admin-set-cash-button").addEventListener("click", async () => {
+  const username = $("#admin-player-username").value.trim().toLowerCase();
+  const amount = Number($("#admin-cash-amount").value) || 0;
+  const reason = $("#admin-cash-reason").value;
+  if (!username) { setAdminMessage("Enter username."); return; }
+  try { await setCash(username, amount, reason, state.user?.username || "admin"); await addAdminLog(state.user?.username || "admin", "set_cash", username, { amount, reason }); setAdminMessage("Cash set."); } catch (error) { setAdminMessage(error.message || "Failed to set cash."); }
+});
 
-const readyButton = $("#ready-button");
-if (readyButton) readyButton.addEventListener("click", async () => { try { await setReady(state.roomId, state.user.uid, true); } catch (error) { setRoomMessage(error.message || "Failed to ready."); } });
+$("#admin-save-room-button").addEventListener("click", async () => {
+  if (!state.roomId) { setAdminMessage("You are not in a room."); return; }
+  const settings = {
+    minBet: Number($("#admin-room-min-bet").value) || 0,
+    botLevel: $("#admin-room-bot-level").value,
+    arrangeTimerSeconds: Number($("#admin-room-arrange-timer").value) || 0,
+    readyTimerSeconds: Number($("#admin-room-ready-timer").value) || 0,
+    autoFillBots: $("#admin-room-auto-fill-bots").checked,
+    scoopBonus: $("#admin-room-scoop-bonus").checked
+  };
+  try { await updateRoomSettings(state.roomId, settings); await addAdminLog(state.user?.username || "admin", "room_settings", state.roomId, settings); setAdminMessage("Room settings saved."); } catch (error) { setAdminMessage(error.message || "Failed to save room settings."); }
+});
 
-const forceStartButton = $("#force-start-button");
-if (forceStartButton) forceStartButton.addEventListener("click", async () => { try { await replaceUnreadyWithBots(state.roomId); await startRound(state.roomId, state.user); } catch (error) { setRoomMessage(error.message || "Failed force start."); } });
+$("#admin-fill-bots-button").addEventListener("click", async () => {
+  if (!state.roomId) { setAdminMessage("You are not in a room."); return; }
+  try { await fillBotsInRoom(state.roomId); setAdminMessage("Bots filled."); } catch (error) { setAdminMessage(error.message || "Failed to fill bots."); }
+});
 
-const adminButton = $("#admin-button");
-if (adminButton) adminButton.addEventListener("click", showAdminScreen);
-
-const roomAdminButton = $("#room-admin-button");
-if (roomAdminButton) roomAdminButton.addEventListener("click", showAdminScreen);
-
-const adminBackButton = $("#admin-back-button");
-if (adminBackButton) adminBackButton.addEventListener("click", () => { if (state.adminUnsub) { state.adminUnsub(); state.adminUnsub = null; } if (state.roomId) showScreen("room"); else showScreen("menu"); });
-
-const adminLoadPlayerButton = $("#admin-load-player-button");
-if (adminLoadPlayerButton) {
-  adminLoadPlayerButton.addEventListener("click", async () => {
-    const username = $("#admin-player-username").value.trim().toLowerCase();
-    if (!username) { setAdminMessage("Enter a username."); return; }
-    const userData = await getUserData(username);
-    if (!userData) { setText("#admin-player-info", "User not found."); return; }
-    const infoBox = $("#admin-player-info");
-    if (infoBox) infoBox.innerHTML = `<div>Username: ${userData.username}</div><div>Display Name: ${userData.displayName}</div><div>Cash: ${userData.cash}</div><div>Games: ${userData.games || 0}</div><div>Wins: ${userData.wins || 0}</div><div>Points: ${userData.points || 0}</div>`;
-    const nameField = $("#admin-display-name");
-    if (nameField) nameField.value = userData.displayName || "";
-  });
-}
-
-const adminSaveNameButton = $("#admin-save-name-button");
-if (adminSaveNameButton) {
-  adminSaveNameButton.addEventListener("click", async () => {
-    const username = $("#admin-player-username").value.trim().toLowerCase();
-    const displayName = $("#admin-display-name").value.trim();
-    if (!username || !displayName) { setAdminMessage("Username and display name required."); return; }
-    try { await updateDisplayName(username, displayName, state.user?.username || "admin"); setAdminMessage("Display name updated."); } catch (error) { setAdminMessage(error.message || "Failed to update display name."); }
-  });
-}
-
-const adminAddCashButton = $("#admin-add-cash-button");
-if (adminAddCashButton) {
-  adminAddCashButton.addEventListener("click", async () => {
-    const username = $("#admin-player-username").value.trim().toLowerCase();
-    const amount = Number($("#admin-cash-amount").value) || 0;
-    const reason = $("#admin-cash-reason").value;
-    if (!username || amount <= 0) { setAdminMessage("Enter username and positive amount."); return; }
-    try { await adjustCash(username, amount, "admin_transfer", reason, state.user?.username || "admin"); await addAdminLog(state.user?.username || "admin", "add_cash", username, { amount, reason }); setAdminMessage("Cash added."); } catch (error) { setAdminMessage(error.message || "Failed to add cash."); }
-  });
-}
-
-const adminDeductCashButton = $("#admin-deduct-cash-button");
-if (adminDeductCashButton) {
-  adminDeductCashButton.addEventListener("click", async () => {
-    const username = $("#admin-player-username").value.trim().toLowerCase();
-    const amount = Number($("#admin-cash-amount").value) || 0;
-    const reason = $("#admin-cash-reason").value;
-    if (!username || amount <= 0) { setAdminMessage("Enter username and positive amount."); return; }
-    try { await adjustCash(username, -amount, "admin_deduct", reason, state.user?.username || "admin"); await addAdminLog(state.user?.username || "admin", "deduct_cash", username, { amount, reason }); setAdminMessage("Cash deducted."); } catch (error) { setAdminMessage(error.message || "Failed to deduct cash."); }
-  });
-}
-
-const adminSetCashButton = $("#admin-set-cash-button");
-if (adminSetCashButton) {
-  adminSetCashButton.addEventListener("click", async () => {
-    const username = $("#admin-player-username").value.trim().toLowerCase();
-    const amount = Number($("#admin-cash-amount").value) || 0;
-    const reason = $("#admin-cash-reason").value;
-    if (!username) { setAdminMessage("Enter username."); return; }
-    try { await setCash(username, amount, reason, state.user?.username || "admin"); await addAdminLog(state.user?.username || "admin", "set_cash", username, { amount, reason }); setAdminMessage("Cash set."); } catch (error) { setAdminMessage(error.message || "Failed to set cash."); }
-  });
-}
-
-const adminSaveRoomButton = $("#admin-save-room-button");
-if (adminSaveRoomButton) {
-  adminSaveRoomButton.addEventListener("click", async () => {
-    if (!state.roomId) { setAdminMessage("You are not in a room."); return; }
-    const settings = {
-      minBet: Number($("#admin-room-min-bet").value) || 0,
-      botLevel: $("#admin-room-bot-level").value,
-      arrangeTimerSeconds: Number($("#admin-room-arrange-timer").value) || 0,
-      readyTimerSeconds: Number($("#admin-room-ready-timer").value) || 0,
-      autoFillBots: $("#admin-room-auto-fill-bots").checked,
-      scoopBonus: $("#admin-room-scoop-bonus").checked
-    };
-    try { await updateRoomSettings(state.roomId, settings); await addAdminLog(state.user?.username || "admin", "room_settings", state.roomId, settings); setAdminMessage("Room settings saved."); } catch (error) { setAdminMessage(error.message || "Failed to save room settings."); }
-  });
-}
-
-const adminFillBotsButton = $("#admin-fill-bots-button");
-if (adminFillBotsButton) adminFillBotsButton.addEventListener("click", async () => { if (!state.roomId) { setAdminMessage("You are not in a room."); return; } try { await fillBotsInRoom(state.roomId); setAdminMessage("Bots filled."); } catch (error) { setAdminMessage(error.message || "Failed to fill bots."); } });
-
-const adminForceStartButton = $("#admin-force-start-button");
-if (adminForceStartButton) {
-  adminForceStartButton.addEventListener("click", async () => {
-    if (!state.roomId) { setAdminMessage("You are not in a room."); return; }
-    if (!isHost()) { setAdminMessage("Only the room host can force start."); return; }
-    try { await replaceUnreadyWithBots(state.roomId); await startRound(state.roomId, state.user); setAdminMessage("Round started."); } catch (error) { setAdminMessage(error.message || "Failed to force start."); }
-  });
-}
+$("#admin-force-start-button").addEventListener("click", async () => {
+  if (!state.roomId) { setAdminMessage("You are not in a room."); return; }
+  if (!isHost()) { setAdminMessage("Only the room host can force start."); return; }
+  try { await replaceUnreadyWithBots(state.roomId); await startRound(state.roomId, state.user); setAdminMessage("Round started."); } catch (error) { setAdminMessage(error.message || "Failed to force start."); }
+});
 
 document.addEventListener("click", (event) => {
   const tab = event.target.closest(".pg-row-tab");
@@ -1556,7 +1537,10 @@ if (sendMoneyBtn) {
 
 setInterval(() => {
   if (state.user && !state.unsubTransactions) {
-    state.unsubTransactions = listenUserTransactions(state.user.username, (txs) => { state.transactions = txs; renderTransactionHistory(); });
+    state.unsubTransactions = listenUserTransactions(state.user.username, (txs) => {
+      state.transactions = txs;
+      renderTransactionHistory();
+    });
   }
 }, 1000);
 
@@ -1564,7 +1548,10 @@ function renderTransactionHistory() {
   const list = document.getElementById("transaction-history");
   if (!list) return;
   list.innerHTML = "";
-  if (!state.transactions || state.transactions.length === 0) { list.innerHTML = '<div class="tx-empty">No transactions yet.</div>'; return; }
+  if (!state.transactions || state.transactions.length === 0) {
+    list.innerHTML = '<div class="tx-empty">No transactions yet.</div>';
+    return;
+  }
   state.transactions.forEach((tx) => {
     const amount = Number(tx.amount) || 0;
     let icon = "💰";
