@@ -2397,3 +2397,29 @@ button:disabled {
   }
   .sp-row { font-size: 9px; }
 }
+
+/* === OVERLAY PANELS (Send Money + Transaction History) === */
+#transaction-history-panel,
+#send-money-form {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 16px;
+}
+#transaction-history-panel.hidden,
+#send-money-form.hidden { display: none; }
+.tx-modal,
+.send-modal {
+  position: relative;
+  width: min(94%, 560px);
+  max-height: 86vh;
+  overflow: auto;
+  background: rgba(7, 24, 15, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  padding: 18px;
+}
