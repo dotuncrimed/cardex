@@ -8,11 +8,6 @@
   <link rel="stylesheet" href="style.css" />
 
   <style>
-    /*
-      Extra safety styles for overlays and score panel.
-      These do not replace style.css.
-    */
-
     #score-panel {
       display: none;
     }
@@ -55,9 +50,7 @@
 <body>
   <div id="app">
 
-    <!-- ========================= -->
-    <!-- LOGIN SCREEN              -->
-    <!-- ========================= -->
+    <!-- LOGIN SCREEN -->
     <div id="login-screen" class="screen">
       <div class="fp-wrap">
         <div class="fp-backdrop">
@@ -104,9 +97,7 @@
       </div>
     </div>
 
-    <!-- ========================= -->
-    <!-- MENU SCREEN               -->
-    <!-- ========================= -->
+    <!-- MENU SCREEN -->
     <div id="menu-screen" class="screen hidden">
       <div class="fp-wrap">
         <div class="fp-backdrop">
@@ -255,9 +246,7 @@
       </div>
     </div>
 
-    <!-- ========================= -->
-    <!-- ROOM SCREEN               -->
-    <!-- ========================= -->
+    <!-- ROOM SCREEN -->
     <div id="room-screen" class="screen hidden">
       <div class="pg-table">
         <div class="mat"></div>
@@ -301,9 +290,7 @@
         <!-- ROOM MESSAGE -->
         <div id="room-message" class="pg-message"></div>
 
-        <!-- ========================= -->
-        <!-- LOBBY SECTION             -->
-        <!-- ========================= -->
+        <!-- LOBBY SECTION -->
         <div id="lobby-section" class="pg-panel hidden">
           <h3>Lobby</h3>
 
@@ -377,9 +364,7 @@
           </div>
         </div>
 
-        <!-- ========================= -->
-        <!-- ARRANGE SECTION           -->
-        <!-- ========================= -->
+        <!-- ARRANGE SECTION -->
         <div id="arrange-section" class="hidden">
           <div id="arrange-status" class="pg-message" style="top: 18%;"></div>
 
@@ -416,9 +401,7 @@
           </div>
         </div>
 
-        <!-- ========================= -->
-        <!-- ZOOM ARRANGE VIEW         -->
-        <!-- ========================= -->
+        <!-- ZOOM ARRANGE VIEW -->
         <div id="zoom-view" class="zoom-view hidden">
           <div class="zoom-head">
             <span>Arrange Your Cards</span>
@@ -455,9 +438,7 @@
           </div>
         </div>
 
-        <!-- ========================= -->
-        <!-- REVEAL LAYER              -->
-        <!-- ========================= -->
+        <!-- REVEAL LAYER -->
         <div id="reveal-layer" class="reveal-layer hidden">
           <div id="reveal-top" class="reveal-slot reveal-top"></div>
           <div id="reveal-left" class="reveal-slot reveal-left"></div>
@@ -469,9 +450,7 @@
           </button>
         </div>
 
-        <!-- ========================= -->
-        <!-- READY AREA                -->
-        <!-- ========================= -->
+        <!-- READY AREA -->
         <div id="ready-area" class="ready-area hidden">
           <div id="ready-list" class="pg-ready-list"></div>
 
@@ -490,9 +469,7 @@
           </div>
         </div>
 
-        <!-- ========================= -->
-        <!-- SCORE PANEL               -->
-        <!-- ========================= -->
+        <!-- SCORE PANEL -->
         <div id="score-panel" class="score-panel">
           <div class="sp-row">
             <span>Front</span>
@@ -515,9 +492,7 @@
           </div>
         </div>
 
-        <!-- ========================= -->
-        <!-- RESULTS SECTION           -->
-        <!-- ========================= -->
+        <!-- RESULTS SECTION -->
         <div id="results-section" class="pg-panel hidden">
           <button id="close-results-button" class="close-panel-btn">
             ✕
@@ -534,9 +509,7 @@
       </div>
     </div>
 
-    <!-- ========================= -->
-    <!-- ADMIN SCREEN              -->
-    <!-- ========================= -->
+    <!-- ADMIN SCREEN -->
     <div id="admin-screen" class="screen hidden">
       <div class="panel wide-panel">
         <div class="controls">
@@ -667,9 +640,7 @@
     </div>
   </div>
 
-  <!-- ========================= -->
-  <!-- SEND MONEY OVERLAY        -->
-  <!-- ========================= -->
+  <!-- SEND MONEY OVERLAY -->
   <div id="send-money-form" class="hidden">
     <div class="send-modal">
       <h3>💸 Send Money</h3>
@@ -704,9 +675,7 @@
     </div>
   </div>
 
-  <!-- ========================= -->
   <!-- TRANSACTION HISTORY PANEL -->
-  <!-- ========================= -->
   <div id="transaction-history-panel" class="hidden">
     <div class="tx-modal">
       <button id="close-transaction-history-button" class="close-panel-btn">
@@ -719,9 +688,10 @@
     </div>
   </div>
 
-  <!-- ========================= -->
-  <!-- APP ENTRY POINT           -->
-  <!-- ========================= -->
+  <!-- APP ENTRY POINT -->
   <script type="module" src="./js/app.js"></script>
+
+  <!-- FEATURE 1: LEADERBOARDS -->
+  <script type="module" src="./js/leaderboard.js"></script>
 </body>
 </html>
