@@ -88,6 +88,7 @@ function ensureBots(players, botLevel) {
   }
 
   updated.sort((a, b) => a.seat - b.seat);
+
   return updated;
 }
 
@@ -141,6 +142,7 @@ export async function createRoom(user, settings) {
     };
 
     await setDoc(ref, room);
+
     return code;
   }
 
@@ -188,9 +190,16 @@ export async function joinRoomByCode(user, code, displayName) {
   if (["arranging", "scoring"].includes(room.status)) {
     const spectators = [
       ...room.spectators,
-      { uid: user.uid, username: user.username, displayName, joinedAt: Date.now() }
+      {
+        uid: user.uid,
+        username: user.username,
+        displayName,
+        joinedAt: Date.now()
+      }
     ];
+
     await updateDoc(roomRef(code), { spectators });
+
     return code;
   }
 
@@ -200,29 +209,48 @@ export async function joinRoomByCode(user, code, displayName) {
 
   let players = [...room.players];
   let spectators = [...room.spectators];
+
   const emptySeat = firstEmptySeat(players);
 
   if (emptySeat !== null && hasMoney) {
     players.push(makeHumanSeat({ ...user, displayName }, emptySeat));
   } else {
     const botIndex = players.findIndex((p) => p.isBot);
+
     if (hasMoney && botIndex >= 0) {
-      players[botIndex] = makeHumanSeat({ ...user, displayName }, players[botIndex].seat);
+      players[botIndex] = makeHumanSeat(
+        { ...user, displayName },
+        players[botIndex].seat
+      );
     } else {
-      spectators.push({ uid: user.uid, username: user.username, displayName, joinedAt: Date.now() });
+      spectators.push({
+        uid: user.uid,
+        username: user.username,
+        displayName,
+        joinedAt: Date.now()
+      });
     }
   }
 
   players.sort((a, b) => a.seat - b.seat);
-  await updateDoc(roomRef(code), { players, spectators });
+
+  await updateDoc(roomRef(code), {
+    players,
+    spectators
+  });
+
   await claimHostIfOrphan(code);
+
   return code;
 }
 
 export async function takeSeat(user, roomId, displayName) {
   const room = await getRoom(roomId);
+
   if (!room) return;
+
   if (room.players.some((p) => p.uid === user.uid)) return;
+
   if (!["lobby", "round_end"].includes(room.status)) {
     throw new Error("You can only take a seat between rounds.");
   }
@@ -230,22 +258,38 @@ export async function takeSeat(user, roomId, displayName) {
   const minBet = Number(room.settings.minBet) || 0;
   const me = await getUserData(user.username);
   const hasMoney = Boolean(me) && Number(me.cash) >= minBet;
-  if (!hasMoney) throw new Error("Not enough cash to take a seat.");
+
+  if (!hasMoney) {
+    throw new Error("Not enough cash to take a seat.");
+  }
 
   let players = [...room.players];
   let spectators = room.spectators.filter((s) => s.uid !== user.uid);
+
   const emptySeat = firstEmptySeat(players);
 
   if (emptySeat !== null) {
     players.push(makeHumanSeat({ ...user, displayName }, emptySeat));
   } else {
     const botIndex = players.findIndex((p) => p.isBot);
-    if (botIndex < 0) throw new Error("No seat available.");
-    players[botIndex] = makeHumanSeat({ ...user, displayName }, players[botIndex].seat);
+
+    if (botIndex < 0) {
+      throw new Error("No seat available.");
+    }
+
+    players[botIndex] = makeHumanSeat(
+      { ...user, displayName },
+      players[botIndex].seat
+    );
   }
 
   players.sort((a, b) => a.seat - b.seat);
-  await updateDoc(roomRef(roomId), { players, spectators });
+
+  await updateDoc(roomRef(roomId), {
+    players,
+    spectators
+  });
+
   await claimHostIfOrphan(roomId);
 }
 
@@ -255,6 +299,7 @@ export async function leaveRoom(user, roomId) {
   if (!room) return;
 
   const leavingPlayer = room.players.find((p) => p.uid === user.uid);
+
   let players = room.players.filter((p) => p.uid !== user.uid);
   let spectators = room.spectators.filter((s) => s.uid !== user.uid);
   let hostId = room.hostId;
@@ -263,10 +308,12 @@ export async function leaveRoom(user, roomId) {
 
   if (hostId === user.uid) {
     const nextHost = players.find((p) => !p.isBot);
+
     if (!nextHost) {
       await deleteDoc(roomRef(roomId));
       return;
     }
+
     hostId = nextHost.uid;
   }
 
@@ -434,19 +481,33 @@ export async function submitArrangement(roomId, uid, arrangement, isFouled = fal
 
 export async function declareSpecial(roomId, uid, hand) {
   const spec = detectSpecial(hand);
-  if (!spec) throw new Error("No special hand.");
+
+  if (!spec) {
+    throw new Error("No special hand.");
+  }
+
   const sorted = sortCards(hand);
+
   const arrangement = {
     front: sorted.slice(0, 3),
     middle: sorted.slice(3, 8),
     back: sorted.slice(8, 13)
   };
+
   await setDoc(
     handRef(roomId, uid),
-    { arrangement, special: spec, fouled: false, submitted: true, updatedAt: Date.now() },
+    {
+      arrangement,
+      special: spec,
+      fouled: false,
+      submitted: true,
+      updatedAt: Date.now()
+    },
     { merge: true }
   );
+
   await updatePlayerField(roomId, uid, "submitted", true);
+
   return spec;
 }
 
@@ -503,6 +564,7 @@ export async function startRound(roomId, user) {
 
   const roundNumber = (Number(room.roundNumber) || 0) + 1;
   const arrangeTimerSeconds = Number(room.settings.arrangeTimerSeconds) || 0;
+
   const phaseEndsAt =
     arrangeTimerSeconds > 0
       ? Date.now() + arrangeTimerSeconds * 1000
@@ -569,7 +631,7 @@ export async function startRound(roomId, user) {
       }
     }
 
-    // Overwrite the hand document fully so old round fields do not leak
+    // Overwrite hand document fully to avoid old round data leaking
     batch.set(handRef(roomId, player.uid), handData);
 
     finalPlayers.push(playerUpdate);
@@ -597,20 +659,22 @@ export async function replaceUnreadyWithBots(roomId) {
   let hostId = room.hostId;
 
   const hostPlayer = players.find((p) => p.uid === hostId);
+
   if (hostPlayer && !hostPlayer.isBot && !hostPlayer.ready) {
     const successor = players.find(
       (p) => !p.isBot && p.ready && p.uid !== hostId
     );
+
     if (successor) {
       hostId = successor.uid;
     } else {
-      return; // pause instead of ejecting the host
+      return;
     }
   }
 
   players = players.filter((p) => p.isBot || p.ready);
 
-  if (!players.some((p) => !p.isBot)) return; // never run a bot-only table
+  if (!players.some((p) => !p.isBot)) return;
 
   players = ensureBots(players, room.settings.botLevel);
   players.sort((a, b) => a.seat - b.seat);
@@ -624,9 +688,11 @@ export async function replaceUnreadyWithBots(roomId) {
 
 export async function claimHostIfOrphan(roomId) {
   const room = await getRoom(roomId);
+
   if (!room) return;
 
   const hostInPlayers = room.players.some((p) => p.uid === room.hostId);
+
   if (hostInPlayers) return;
 
   const firstHuman = room.players.find((p) => !p.isBot);
@@ -650,7 +716,9 @@ export async function finishRound(roomId, user) {
   const room = await getRoom(roomId);
 
   if (!room) return;
+
   if (room.hostId !== user.uid) return;
+
   if (room.status !== "arranging" && room.status !== "scoring") return;
 
   if ((room.roundNumber || 0) > 0 && room.settledRound === room.roundNumber) {
@@ -665,7 +733,7 @@ export async function finishRound(roomId, user) {
   }
 
   try {
-    // Faster: fetch all hands simultaneously
+    // Faster: fetch all hands at the same time
     const handSnaps = await Promise.all(
       room.players.map((player) => getDoc(handRef(roomId, player.uid)))
     );
@@ -772,7 +840,7 @@ export async function finishRound(roomId, user) {
         (ranking) => !ranking.isBot
       );
 
-      // Faster: fetch all user wallets simultaneously
+      // Faster: fetch all user wallets at the same time
       const userSnaps = await Promise.all(
         humanRankings.map((ranking) =>
           getDoc(doc(db, "users", ranking.username))
@@ -790,12 +858,14 @@ export async function finishRound(roomId, user) {
 
         let delta = Number(ranking.netCoins) || 0;
 
-        // MONEY-LAYER GUARD: fouled players can never receive coins
+        // MONEY-LAYER GUARD:
+        // fouled players can never receive positive coins
         if (ranking.fouled && delta > 0) {
           console.error(
             "BLOCKED positive settlement for fouled player:",
             ranking.uid
           );
+
           delta = 0;
         }
 
@@ -834,6 +904,7 @@ export async function finishRound(roomId, user) {
     }
 
     const readyTimerSeconds = Number(room.settings.readyTimerSeconds) || 0;
+
     const phaseEndsAt =
       readyTimerSeconds > 0
         ? Date.now() + readyTimerSeconds * 1000
@@ -880,9 +951,14 @@ export async function finishRound(roomId, user) {
 export function listenAllUsers(callback) {
   return onSnapshot(collection(db, "users"), (snapshot) => {
     const users = [];
+
     snapshot.forEach((docSnap) => {
-      users.push({ username: docSnap.id, ...docSnap.data() });
+      users.push({
+        username: docSnap.id,
+        ...docSnap.data()
+      });
     });
+
     callback(users);
   });
 }
@@ -893,28 +969,54 @@ export function listenAllRooms(callback) {
     orderBy("createdAt", "desc"),
     limit(30)
   );
+
   return onSnapshot(q, (snapshot) => {
     const rooms = [];
-    snapshot.forEach((d) => rooms.push({ id: d.id, ...d.data() }));
+
+    snapshot.forEach((d) => {
+      rooms.push({
+        id: d.id,
+        ...d.data()
+      });
+    });
+
     callback(rooms);
   });
 }
 
 export async function spectateRoom(user, code, displayName) {
   code = String(code || "").trim().toUpperCase();
+
   const room = await getRoom(code);
-  if (!room) throw new Error("Room not found.");
-  if (room.players.some((p) => p.uid === user.uid)) return code;
-  if (room.spectators.some((s) => s.uid === user.uid)) return code;
+
+  if (!room) {
+    throw new Error("Room not found.");
+  }
+
+  if (room.players.some((p) => p.uid === user.uid)) {
+    return code;
+  }
+
+  if (room.spectators.some((s) => s.uid === user.uid)) {
+    return code;
+  }
+
   const spectators = [
     ...room.spectators,
-    { uid: user.uid, username: user.username, displayName, joinedAt: Date.now() }
+    {
+      uid: user.uid,
+      username: user.username,
+      displayName,
+      joinedAt: Date.now()
+    }
   ];
+
   await updateDoc(roomRef(code), { spectators });
+
   return code;
 }
 
-const STALE_MS = 15 * 60 * 1000; // 15 minutes
+const STALE_MS = 15 * 60 * 1000;
 const sweptRoomIds = new Set();
 
 export async function sweepStaleRooms(rooms, excludeUid) {
@@ -922,19 +1024,25 @@ export async function sweepStaleRooms(rooms, excludeUid) {
 
   for (const room of rooms) {
     const roomId = room.id || room.roomCode;
+
     if (!roomId) continue;
+
     if (sweptRoomIds.has(roomId)) continue;
 
     const lastActivity = room.updatedAt || room.createdAt || 0;
+
     if (now - lastActivity < STALE_MS) continue;
 
-    // don't sweep a room with a live timer (active arrange/ready phase)
+    // Do not sweep a room with a live timer
     if (room.phaseEndsAt && now < room.phaseEndsAt) continue;
 
-    // don't sweep rooms the current user is inside
+    // Do not sweep rooms the current user is inside
     if (excludeUid) {
       const inPlayers = (room.players || []).some((p) => p.uid === excludeUid);
-      const inSpectators = (room.spectators || []).some((s) => s.uid === excludeUid);
+      const inSpectators = (room.spectators || []).some(
+        (s) => s.uid === excludeUid
+      );
+
       if (inPlayers || inSpectators) continue;
     }
 
@@ -961,9 +1069,13 @@ export async function claimDailyBonus(username) {
 
   return runTransaction(db, async (tx) => {
     const snap = await tx.get(userRef);
-    if (!snap.exists()) throw new Error("User not found.");
+
+    if (!snap.exists()) {
+      throw new Error("User not found.");
+    }
 
     const data = snap.data();
+
     if (data.lastClaimDate === today) {
       throw new Error("Already claimed today. Come back tomorrow!");
     }
@@ -992,8 +1104,14 @@ export async function claimDailyBonus(username) {
 
 export async function transferCash(fromUsername, toUsername, amount, note) {
   amount = Math.floor(Number(amount));
-  if (!amount || amount <= 0) throw new Error("Enter a positive amount.");
-  if (fromUsername === toUsername) throw new Error("Cannot send to yourself.");
+
+  if (!amount || amount <= 0) {
+    throw new Error("Enter a positive amount.");
+  }
+
+  if (fromUsername === toUsername) {
+    throw new Error("Cannot send to yourself.");
+  }
 
   const fromRef = doc(db, "users", fromUsername);
   const toRef = doc(db, "users", toUsername);
@@ -1001,20 +1119,37 @@ export async function transferCash(fromUsername, toUsername, amount, note) {
   return runTransaction(db, async (tx) => {
     const fromSnap = await tx.get(fromRef);
     const toSnap = await tx.get(toRef);
-    if (!fromSnap.exists()) throw new Error("Sender not found.");
-    if (!toSnap.exists()) throw new Error("Recipient not found.");
+
+    if (!fromSnap.exists()) {
+      throw new Error("Sender not found.");
+    }
+
+    if (!toSnap.exists()) {
+      throw new Error("Recipient not found.");
+    }
 
     const fromCash = Number(fromSnap.data().cash) || 0;
-    if (fromCash < amount) throw new Error("Not enough cash.");
+
+    if (fromCash < amount) {
+      throw new Error("Not enough cash.");
+    }
 
     const newFrom = fromCash - amount;
     const newTo = (Number(toSnap.data().cash) || 0) + amount;
 
-    tx.update(fromRef, { cash: newFrom, updatedAt: Date.now() });
-    tx.update(toRef, { cash: newTo, updatedAt: Date.now() });
+    tx.update(fromRef, {
+      cash: newFrom,
+      updatedAt: Date.now()
+    });
+
+    tx.update(toRef, {
+      cash: newTo,
+      updatedAt: Date.now()
+    });
 
     const ts = Date.now();
-    tx.set(doc(db, "users", fromUsername, "transactions", "out_" + ts), {
+
+    tx.set(doc(collection(db, "users", fromUsername, "transactions")), {
       type: "transfer_out",
       amount: -amount,
       balanceAfter: newFrom,
@@ -1022,7 +1157,8 @@ export async function transferCash(fromUsername, toUsername, amount, note) {
       to: toUsername,
       createdAt: ts
     });
-    tx.set(doc(db, "users", toUsername, "transactions", "in_" + ts), {
+
+    tx.set(doc(collection(db, "users", toUsername, "transactions")), {
       type: "transfer_in",
       amount: amount,
       balanceAfter: newTo,
@@ -1036,10 +1172,22 @@ export async function transferCash(fromUsername, toUsername, amount, note) {
 }
 
 export function listenUserTransactions(username, callback) {
-  const q = query(collection(db, "users", username, "transactions"), orderBy("createdAt", "desc"), limit(30));
+  const q = query(
+    collection(db, "users", username, "transactions"),
+    orderBy("createdAt", "desc"),
+    limit(30)
+  );
+
   return onSnapshot(q, (snapshot) => {
     const txs = [];
-    snapshot.forEach((docSnap) => { txs.push({ id: docSnap.id, ...docSnap.data() }); });
+
+    snapshot.forEach((docSnap) => {
+      txs.push({
+        id: docSnap.id,
+        ...docSnap.data()
+      });
+    });
+
     callback(txs);
   });
 }
