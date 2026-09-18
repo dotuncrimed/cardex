@@ -2395,27 +2395,113 @@ setInterval(() => {
 
 function renderTransactionHistory() {
   const list = document.getElementById("transaction-history");
+
   if (!list) return;
+
   list.innerHTML = "";
+
   if (!state.transactions || state.transactions.length === 0) {
-    list.innerHTML = '<div class="tx-empty">No transactions yet.</div>'; return;
+    list.innerHTML = '<div class="tx-empty">No transactions yet.</div>';
+    return;
   }
+
   state.transactions.forEach((tx) => {
-    const row = document.createElement("div"); row.className = "tx-row";
-    let icon = "ðŸ’°", label = "Transaction", detail = "", amountClass = "tx-pos";
-    if (tx.type === "daily_bonus") { icon = "ðŸŽ"; label = "Daily Bonus"; detail = "Login reward"; }
-    else if (tx.type === "transfer_in") { icon = "ðŸ“¥"; label = "Received"; detail = "From @" + (tx.from || "?"); }
-    else if (tx.type === "transfer_out") { icon = "ðŸ“¤"; label = "Sent"; detail = "To @" + (tx.to || "?"); amountClass = "tx-neg"; }
-    else if (tx.type === "game_settle") { icon = "ðŸŽ®"; label = "Game"; detail = tx.note || "Settlement"; if (tx.amount < 0) amountClass = "tx-neg"; }
-    else if (tx.type === "room_entry") { icon = "ðŸŽŸï¸"; label = "Room Entry"; amountClass = "tx-neg"; }
-    else if (tx.type === "game_win") { icon = "ðŸ†"; label = "Game Win"; }
-    else { label = tx.type || "Transaction"; if (tx.amount < 0) amountClass = "tx-neg"; }
-    
     const amount = Number(tx.amount) || 0;
-    const amountStr = (amount >= 0 ? "+" : "") + formatCash(amount);
-    const time = new Date(tx.createdAt || Date.now()).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-    
-    row.innerHTML = '<div class="tx-icon">' + icon + '</div><div class="tx-body"><div class="tx-label">' + label + '</div><div class="tx-detail">' + detail + '</div><div class="tx-time">' + time + '</div></div><div class="tx-amount ' + amountClass + '">' + amountStr + '</div>';
+
+    let icon = "💰";
+    let label = tx.type || "Transaction";
+    let detail = tx.note || "";
+    let amountClass = amount >= 0 ? "tx-pos" : "tx-neg";
+
+    if (tx.type === "daily_bonus") {
+      icon = "🎁";
+      label = "Daily Bonus";
+      detail = "Login reward";
+      amountClass = "tx-pos";
+    } else if (tx.type === "transfer_in") {
+      icon = "📥";
+      label = "Received";
+      detail = `From @${tx.from || "?"}`;
+      amountClass = "tx-pos";
+    } else if (tx.type === "transfer_out") {
+      icon = "📤";
+      label = "Sent";
+      detail = `To @${tx.to || "?"}`;
+      amountClass = "tx-neg";
+    } else if (tx.type === "game_settle") {
+      icon = "🎮";
+      label = "Game Settlement";
+      detail = tx.note || "Game settlement";
+      amountClass = amount >= 0 ? "tx-pos" : "tx-neg";
+    } else if (tx.type === "room_entry") {
+      icon = "🎟️";
+      label = "Room Entry";
+      detail = tx.note || "Room entry";
+      amountClass = "tx-neg";
+    } else if (tx.type === "game_win") {
+      icon = "🏆";
+      label = "Game Win";
+      detail = tx.note || "Game win";
+      amountClass = "tx-pos";
+    } else if (tx.type === "admin_transfer") {
+      icon = "🛠️";
+      label = "Admin Add Cash";
+      detail = tx.note || "Admin adjustment";
+      amountClass = amount >= 0 ? "tx-pos" : "tx-neg";
+    } else if (tx.type === "admin_deduct") {
+      icon = "🛠️";
+      label = "Admin Deduct Cash";
+      detail = tx.note || "Admin adjustment";
+      amountClass = amount >= 0 ? "tx-pos" : "tx-neg";
+    } else if (tx.type === "admin_set") {
+      icon = "🛠️";
+      label = "Admin Set Cash";
+      detail = tx.note || "Admin adjustment";
+      amountClass = amount >= 0 ? "tx-pos" : "tx-neg";
+    }
+
+    const row = document.createElement("div");
+    row.className = "tx-row";
+
+    const iconEl = document.createElement("div");
+    iconEl.className = "tx-icon";
+    iconEl.textContent = icon;
+
+    const bodyEl = document.createElement("div");
+    bodyEl.className = "tx-body";
+
+    const labelEl = document.createElement("div");
+    labelEl.className = "tx-label";
+    labelEl.textContent = label;
+
+    const detailEl = document.createElement("div");
+    detailEl.className = "tx-detail";
+    detailEl.textContent = detail;
+
+    const timeEl = document.createElement("div");
+    timeEl.className = "tx-time";
+    timeEl.textContent = new Date(tx.createdAt || Date.now()).toLocaleString(
+      undefined,
+      {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      }
+    );
+
+    const amountEl = document.createElement("div");
+    amountEl.className = `tx-amount ${amountClass}`;
+    amountEl.textContent = `${amount >= 0 ? "+" : ""}${formatCash(amount)}`;
+
+    bodyEl.appendChild(labelEl);
+    bodyEl.appendChild(detailEl);
+    bodyEl.appendChild(timeEl);
+
+    row.appendChild(iconEl);
+    row.appendChild(bodyEl);
+    row.appendChild(amountEl);
+
     list.appendChild(row);
   });
 }
