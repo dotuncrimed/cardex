@@ -1,15 +1,18 @@
 import { auth, db, isFirebaseConfigured } from "./firebase.js";
+
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   onAuthStateChanged,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
 import {
   doc,
   getDoc,
   setDoc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
 import { DUMMY_EMAIL_DOMAIN, DEFAULT_STARTING_CASH } from "./config.js";
 
 const authListeners = [];
@@ -129,5 +132,6 @@ export async function loginOrRegister(username, pin) {
 
 export async function logoutUser() {
   if (!isFirebaseConfigured) return;
+
   await signOut(auth);
 }
