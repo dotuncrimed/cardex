@@ -487,8 +487,14 @@ export async function startRound(roomId, user) {
 
   const minBet = Number(room.settings.minBet) || 0;
 
-  for (const human of humans) {
-    const userData = await getUserData(human.username);
+  // Faster: fetch all human cash balances at the same time
+  const humanDataSnaps = await Promise.all(
+    humans.map((human) => getUserData(human.username))
+  );
+
+  for (let i = 0; i < humans.length; i++) {
+    const userData = humanDataSnaps[i];
+    const human = humans[i];
 
     if (!userData || Number(userData.cash) < minBet) {
       throw new Error(`${human.displayName} does not have enough cash.`);
@@ -496,9 +502,7 @@ export async function startRound(roomId, user) {
   }
 
   const roundNumber = (Number(room.roundNumber) || 0) + 1;
-
   const arrangeTimerSeconds = Number(room.settings.arrangeTimerSeconds) || 0;
-
   const phaseEndsAt =
     arrangeTimerSeconds > 0
       ? Date.now() + arrangeTimerSeconds * 1000
@@ -506,8 +510,73 @@ export async function startRound(roomId, user) {
 
   players.sort((a, b) => a.seat - b.seat);
 
-  await updateDoc(roomRef(roomId), {
-    players,
+  const deck = shuffle(buildDeck());
+  const batch = writeBatch(db);
+  const finalPlayers = [];
+
+  for (let i = 0; i < players.length; i++) {
+    const player = players[i];
+    const hand = sortCards(deck.slice(i * 13, (i + 1) * 13));
+
+    const handData = {
+      uid: player.uid,
+      username: player.username,
+      displayName: player.displayName,
+      isBot: Boolean(player.isBot),
+      hand,
+      arrangement: null,
+      special: null,
+      fouled: false,
+      submitted: false,
+      roundNumber,
+      updatedAt: Date.now()
+    };
+
+    const playerUpdate = {
+      ...player,
+      submitted: false,
+      ready: Boolean(player.isBot)
+    };
+
+    if (player.isBot) {
+      const spec = detectSpecial(hand);
+
+      if (spec) {
+        const sorted = sortCards(hand);
+
+        handData.arrangement = {
+          front: sorted.slice(0, 3),
+          middle: sorted.slice(3, 8),
+          back: sorted.slice(8, 13)
+        };
+
+        handData.special = spec;
+        handData.fouled = false;
+        handData.submitted = true;
+
+        playerUpdate.submitted = true;
+      } else {
+        const arrangement = botArrangeHand(
+          hand,
+          player.botLevel || room.settings.botLevel || "normal"
+        );
+
+        handData.arrangement = arrangement;
+        handData.fouled = false;
+        handData.submitted = true;
+
+        playerUpdate.submitted = true;
+      }
+    }
+
+    // Overwrite the hand document fully so old round fields do not leak
+    batch.set(handRef(roomId, player.uid), handData);
+
+    finalPlayers.push(playerUpdate);
+  }
+
+  batch.update(roomRef(roomId), {
+    players: finalPlayers,
     status: "arranging",
     roundNumber,
     pot: 0,
@@ -516,54 +585,7 @@ export async function startRound(roomId, user) {
     updatedAt: Date.now()
   });
 
-  const deck = shuffle(buildDeck());
-
-  for (let i = 0; i < players.length; i++) {
-    const player = players[i];
-    const hand = sortCards(deck.slice(i * 13, (i + 1) * 13));
-
-    await setDoc(handRef(roomId, player.uid), {
-      uid: player.uid,
-      username: player.username,
-      displayName: player.displayName,
-      isBot: Boolean(player.isBot),
-      hand,
-      arrangement: null,
-      fouled: false,
-      submitted: false,
-      roundNumber,
-      updatedAt: Date.now()
-    });
-
-    if (player.isBot) {
-      const spec = detectSpecial(hand);
-      if (spec) {
-        const sorted = sortCards(hand);
-        await setDoc(
-          handRef(roomId, player.uid),
-          {
-            arrangement: {
-              front: sorted.slice(0, 3),
-              middle: sorted.slice(3, 8),
-              back: sorted.slice(8, 13)
-            },
-            special: spec,
-            fouled: false,
-            submitted: true,
-            updatedAt: Date.now()
-          },
-          { merge: true }
-        );
-        await updatePlayerField(roomId, player.uid, "submitted", true);
-      } else {
-        const arrangement = botArrangeHand(
-          hand,
-          player.botLevel || room.settings.botLevel || "normal"
-        );
-        await submitArrangement(roomId, player.uid, arrangement, false);
-      }
-    }
-  }
+  await batch.commit();
 }
 
 export async function replaceUnreadyWithBots(roomId) {
@@ -628,85 +650,116 @@ export async function finishRound(roomId, user) {
   const room = await getRoom(roomId);
 
   if (!room) return;
-
   if (room.hostId !== user.uid) return;
-
   if (room.status !== "arranging" && room.status !== "scoring") return;
 
-  if ((room.roundNumber || 0) > 0 && room.settledRound === room.roundNumber) return;
+  if ((room.roundNumber || 0) > 0 && room.settledRound === room.roundNumber) {
+    return;
+  }
 
   if (room.status === "arranging") {
-    await updateDoc(roomRef(roomId), { status: "scoring", updatedAt: Date.now() });
+    await updateDoc(roomRef(roomId), {
+      status: "scoring",
+      updatedAt: Date.now()
+    });
   }
 
   try {
+    // Faster: fetch all hands simultaneously
+    const handSnaps = await Promise.all(
+      room.players.map((player) => getDoc(handRef(roomId, player.uid)))
+    );
+
     const handsMap = {};
+    const handFixBatch = writeBatch(db);
 
-    for (const player of room.players) {
-      try {
-        const snap = await getDoc(handRef(roomId, player.uid));
-        let data = snap.exists() ? snap.data() : null;
-        
-        // If no hand data exists, create a fouled arrangement
-        if (!data) {
-          data = {
-            uid: player.uid,
-            username: player.username,
-            hand: [],
-            arrangement: { front: [], middle: [], back: [] },
-            fouled: true,
-            submitted: true,
-            roundNumber: room.roundNumber,
-            updatedAt: Date.now()
-          };
-          await setDoc(handRef(roomId, player.uid), data, { merge: true });
-        }
+    for (let i = 0; i < room.players.length; i++) {
+      const player = room.players[i];
+      const snap = handSnaps[i];
 
-        // Auto-detect special hands for players who didn't submit
-        if (!data.special && data.hand && data.hand.length === 13) {
-          const spec = detectSpecial(data.hand);
-          if (spec) {
-            const sorted = sortCards(data.hand);
-            data.special = spec;
-            data.arrangement = {
-              front: sorted.slice(0, 3),
-              middle: sorted.slice(3, 8),
-              back: sorted.slice(8, 13)
-            };
-            data.submitted = true;
-            await setDoc(
-              handRef(roomId, player.uid),
-              { arrangement: data.arrangement, special: spec, submitted: true, updatedAt: Date.now() },
-              { merge: true }
-            );
-          }
-        }
+      let data = snap.exists() ? snap.data() : null;
 
-        // Auto-arrange for players who didn't submit (bot their hand)
-        if (!data.arrangement && data.hand && data.hand.length === 13) {
-          const arrangement = botArrangeHand(
-            data.hand,
-            player.botLevel || room.settings.botLevel || "normal"
-          );
-          await submitArrangement(roomId, player.uid, arrangement, false);
-          data.arrangement = arrangement;
-          data.submitted = true;
-        }
-
-        handsMap[player.uid] = data;
-      } catch (error) {
-        console.error("Failed to process hand for player:", player.uid, error);
-        // Create a fouled hand on error
-        handsMap[player.uid] = {
+      // If no hand data exists, create a fouled arrangement
+      if (!data) {
+        data = {
           uid: player.uid,
           username: player.username,
+          displayName: player.displayName,
+          isBot: Boolean(player.isBot),
           hand: [],
-          arrangement: { front: [], middle: [], back: [] },
+          arrangement: {
+            front: [],
+            middle: [],
+            back: []
+          },
+          special: null,
           fouled: true,
-          submitted: true
+          submitted: true,
+          roundNumber: room.roundNumber,
+          updatedAt: Date.now()
         };
+
+        handFixBatch.set(handRef(roomId, player.uid), data);
       }
+
+      // Auto-detect special hands for players who did not submit correctly
+      if (!data.special && data.hand && data.hand.length === 13) {
+        const spec = detectSpecial(data.hand);
+
+        if (spec) {
+          const sorted = sortCards(data.hand);
+
+          data.special = spec;
+          data.fouled = false;
+          data.submitted = true;
+
+          data.arrangement = {
+            front: sorted.slice(0, 3),
+            middle: sorted.slice(3, 8),
+            back: sorted.slice(8, 13)
+          };
+
+          handFixBatch.set(
+            handRef(roomId, player.uid),
+            {
+              arrangement: data.arrangement,
+              special: spec,
+              fouled: false,
+              submitted: true,
+              updatedAt: Date.now()
+            },
+            { merge: true }
+          );
+        }
+      }
+
+      // Auto-arrange for players who did not submit
+      if (!data.arrangement && data.hand && data.hand.length === 13) {
+        const arrangement = botArrangeHand(
+          data.hand,
+          player.botLevel || room.settings.botLevel || "normal"
+        );
+
+        data.arrangement = arrangement;
+        data.fouled = false;
+        data.submitted = true;
+
+        handFixBatch.set(
+          handRef(roomId, player.uid),
+          {
+            arrangement,
+            fouled: false,
+            submitted: true,
+            updatedAt: Date.now()
+          },
+          { merge: true }
+        );
+      }
+
+      handsMap[player.uid] = data;
     }
+
+    await handFixBatch.commit();
 
     const results = calculateResults(room, handsMap);
 
@@ -715,38 +768,82 @@ export async function finishRound(roomId, user) {
       fresh && fresh.settledRound === results.roundNumber;
 
     if (!alreadySettled) {
-      for (const ranking of results.rankings) {
-        if (ranking.isBot) continue;
+      const humanRankings = results.rankings.filter(
+        (ranking) => !ranking.isBot
+      );
 
-        const delta = Number(ranking.netCoins) || 0;
+      // Faster: fetch all user wallets simultaneously
+      const userSnaps = await Promise.all(
+        humanRankings.map((ranking) =>
+          getDoc(doc(db, "users", ranking.username))
+        )
+      );
+
+      const settlementBatch = writeBatch(db);
+
+      humanRankings.forEach((ranking, index) => {
+        const snap = userSnaps[index];
+
+        if (!snap.exists()) return;
+
+        const currentCash = Number(snap.data().cash) || 0;
+
+        let delta = Number(ranking.netCoins) || 0;
 
         // MONEY-LAYER GUARD: fouled players can never receive coins
         if (ranking.fouled && delta > 0) {
-          console.error("BLOCKED positive settlement for fouled player:", ranking.uid);
-          continue;
+          console.error(
+            "BLOCKED positive settlement for fouled player:",
+            ranking.uid
+          );
+          delta = 0;
         }
 
+        const newCash = Math.max(0, Math.floor(currentCash + delta));
+        const userRef = doc(db, "users", ranking.username);
+
+        const userUpdate = {
+          games: increment(1),
+          points: increment(ranking.scorePoints || 0),
+          wins: increment(
+            ranking.overallRank === 1 && ranking.scorePoints > 0 ? 1 : 0
+          ),
+          updatedAt: Date.now()
+        };
+
         if (delta !== 0) {
-          await adjustCash(
-            ranking.username,
-            delta,
-            "game_settle",
-            `Room ${roomId} round ${results.roundNumber}`,
-            user.username
+          userUpdate.cash = newCash;
+
+          settlementBatch.set(
+            doc(collection(db, "users", ranking.username, "transactions")),
+            {
+              type: "game_settle",
+              amount: delta,
+              balanceAfter: newCash,
+              note: `Room ${roomId} round ${results.roundNumber}`,
+              admin: user.username || null,
+              createdAt: Date.now()
+            }
           );
         }
 
-        await updateUserStats(
-          ranking.username,
-          ranking.scorePoints,
-          ranking.overallRank === 1 && ranking.scorePoints > 0
-        );
-      }
+        settlementBatch.update(userRef, userUpdate);
+      });
+
+      await settlementBatch.commit();
     }
 
     const readyTimerSeconds = Number(room.settings.readyTimerSeconds) || 0;
-    const phaseEndsAt = readyTimerSeconds > 0 ? Date.now() + readyTimerSeconds * 1000 : null;
-    const players = room.players.map((p) => ({ ...p, submitted: true, ready: Boolean(p.isBot) }));
+    const phaseEndsAt =
+      readyTimerSeconds > 0
+        ? Date.now() + readyTimerSeconds * 1000
+        : null;
+
+    const players = room.players.map((p) => ({
+      ...p,
+      submitted: true,
+      ready: Boolean(p.isBot)
+    }));
 
     await updateDoc(roomRef(roomId), {
       results,
@@ -758,9 +855,15 @@ export async function finishRound(roomId, user) {
     });
   } catch (error) {
     console.error("finishRound failed:", error);
-    // Emergency: force progress to round_end so room doesn't get stuck
+
+    // Emergency: force progress to round_end so room does not get stuck
     try {
-      const players = room.players.map((p) => ({ ...p, submitted: true, ready: Boolean(p.isBot) }));
+      const players = room.players.map((p) => ({
+        ...p,
+        submitted: true,
+        ready: Boolean(p.isBot)
+      }));
+
       await updateDoc(roomRef(roomId), {
         results: null,
         players,
@@ -768,8 +871,8 @@ export async function finishRound(roomId, user) {
         phaseEndsAt: null,
         updatedAt: Date.now()
       });
-    } catch (e2) {
-      console.error("emergency progress failed:", e2);
+    } catch (emergencyError) {
+      console.error("emergency progress failed:", emergencyError);
     }
   }
 }
