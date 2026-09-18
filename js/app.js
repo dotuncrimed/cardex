@@ -10,8 +10,8 @@ import {
   listenUser, startRound, finishRound, submitArrangement, setReady,
   fillBotsInRoom, replaceUnreadyWithBots, updateRoomSettings, getUserData,
   adjustCash, setCash, updateDisplayName, addAdminLog, listenAllUsers,
-  listenAllRooms, spectateRoom, sweepStaleRooms, claimDailyBonus,
-  transferCash, heartbeatRoom
+  listenAllRooms, spectateRoom, sweepStaleRooms, claimDailyBonus, transferCash,
+  heartbeatRoom, deleteRoomFully, enforceReadyDeadline, READY_FALLBACK_MS
 } from "./db.js";
 
 const state = {
@@ -33,6 +33,7 @@ const state = {
   hostFailCount: 0,
   autoSubmitting: false,
   autoSubmitFailUntil: 0,
+  lastHeartbeatSent: 0,
   selectedCard: null,
   selectedPos: null,
   lastStatus: null,
@@ -175,20 +176,18 @@ function syncCashListeners() {
     else needed[p.username] = true;
   });
   if (state.user) needed[state.user.username] = true;
-
-  Object.keys(needed).forEach((username) => {
-    if (!state.cashListeners[username]) {
-      state.cashListeners[username] = listenUser(username, (data) => {
-        state.cashMap[username] = data ? Number(data.cash) || 0 : 0;
+  Object.keys(needed).forEach((un) => {
+    if (!state.cashListeners[un]) {
+      state.cashListeners[un] = listenUser(un, (data) => {
+        state.cashMap[un] = data ? Number(data.cash) || 0 : 0;
         renderSeats();
       });
     }
   });
-
-  Object.keys(state.cashListeners).forEach((username) => {
-    if (!needed[username]) {
-      state.cashListeners[username]();
-      delete state.cashListeners[username];
+  Object.keys(state.cashListeners).forEach((un) => {
+    if (!needed[un]) {
+      state.cashListeners[un]();
+      delete state.cashListeners[un];
     }
   });
 }
@@ -205,8 +204,8 @@ function renderTableMyRows() {
     tag.textContent = row.toUpperCase();
     const cards = document.createElement("div");
     cards.className = "tmr-cards";
-    (state.arrangement[row] || []).forEach((card) => {
-      const el = makeCardElement(card, false);
+    (state.arrangement[row] || []).forEach((c) => {
+      const el = makeCardElement(c, false);
       el.classList.add("tmr-card");
       cards.appendChild(el);
     });
@@ -221,18 +220,15 @@ function flyCoinsToWinner(winnerUid) {
   const layer = document.querySelector(".pg-table");
   const winner = state.room.players.find((p) => p.uid === winnerUid);
   if (!layer || !winner) return;
-
   const myPlayer = currentUserPlayerObject();
   const mySeat = myPlayer ? myPlayer.seat : 0;
   const pos = SEAT_POS[seatOffset(winner.seat, mySeat)];
   const target = document.querySelector("#seat-" + pos);
   if (!target) return;
-
   const lR = layer.getBoundingClientRect();
   const tR = target.getBoundingClientRect();
   const sx = lR.width / 2;
   const sy = lR.height / 2;
-
   for (let i = 0; i < 14; i++) {
     const c = document.createElement("div");
     c.className = "fly-coin";
@@ -301,7 +297,10 @@ function renderRoomList() {
   list.innerHTML = "";
   const countEl = $("#lobby-room-count");
   if (countEl) countEl.textContent = state.allRooms.length + " live";
-  if (state.allRooms.length === 0) { list.innerHTML = '<div class="lobby-empty">No live tables yet. Create one!</div>'; return; }
+  if (state.allRooms.length === 0) {
+    list.innerHTML = '<div class="lobby-empty">No live tables yet. Create one!</div>';
+    return;
+  }
   state.allRooms.forEach((room) => {
     const st = statusInfo(room.status);
     const players = [...(room.players || [])].sort((a, b) => a.seat - b.seat);
@@ -343,7 +342,10 @@ function syncRoomsListener() {
       sweepStaleRooms(rooms, state.user ? state.user.uid : null);
     });
   }
-  if (!shouldListen && state.roomsUnsub) { state.roomsUnsub(); state.roomsUnsub = null; }
+  if (!shouldListen && state.roomsUnsub) {
+    state.roomsUnsub();
+    state.roomsUnsub = null;
+  }
 }
 
 async function enterRoom(roomId) {
@@ -351,7 +353,12 @@ async function enterRoom(roomId) {
   state.roomId = roomId;
   localStorage.setItem("currentRoomId", roomId);
   state.unsubRoom = listenRoom(roomId, (snapshot) => {
-    if (!snapshot.exists()) { clearRoomState(); showScreen("menu"); syncRoomsListener(); return; }
+    if (!snapshot.exists()) {
+      clearRoomState();
+      showScreen("menu");
+      syncRoomsListener();
+      return;
+    }
     state.room = snapshot.data();
     renderRoom();
     hostController();
@@ -391,8 +398,11 @@ function renderSeats() {
     else if (isSelf) cashVal = state.cashMap[player.username] ?? state.userData?.cash ?? 0;
     else cashVal = state.cashMap[player.username] ?? 0;
     let status = "";
-    if (["arranging", "scoring"].includes(state.room.status) && currentUserInRoomPlayers()) status = player.submitted ? "✓" : "…";
-    else if (state.room.status === "round_end") status = player.ready ? "✓" : "…";
+    if (["arranging", "scoring"].includes(state.room.status) && currentUserInRoomPlayers()) {
+      status = player.submitted ? "✓" : "…";
+    } else if (state.room.status === "round_end") {
+      status = player.ready ? "✓" : "…";
+    }
     el.innerHTML = `
       <div class="avatar">${(player.displayName || "?").charAt(0).toUpperCase()}</div>
       <div class="seat-name">${player.displayName}${isSelf ? " (You)" : ""}${player.isBot ? " 🤖" : ""}</div>
@@ -474,7 +484,7 @@ function renderPlayerList() {
   state.room.spectators.forEach((spectator) => {
     const div = document.createElement("div");
     div.className = "player-row";
-    div.textContent = spectator.displayName;
+    div.textContent = spectator.displayName + (spectator.kickedForNotReady ? " (kicked for not ready)" : "");
     if (spectatorList) spectatorList.appendChild(div);
   });
 }
@@ -532,7 +542,6 @@ function renderLobbySection() {
   const canTakeSeat = currentUserInRoomSpectators() && ["lobby", "round_end"].includes(status);
   if (takeSeatButton) takeSeatButton.classList.toggle("hidden", !canTakeSeat);
 
-  // Spectator Join Game button in Lobby
   const joinGameLobbyBtn = $("#join-game-button");
   if (joinGameLobbyBtn) {
     const hasMoney = state.userData && Number(state.userData.cash) >= Number(state.room?.settings?.minBet || 0);
@@ -629,10 +638,10 @@ function renderRevealSlot(pos, player, arrangement, row, rowScore, cumulative) {
     `<span class="rb-pts ${rowScore >= 0 ? "pos" : "neg"}">${rowScore >= 0 ? "+" : ""}${rowScore}</span>`;
   const cards = document.createElement("div");
   cards.className = "reveal-cards";
-  ((arrangement && arrangement[row]) || []).forEach((card, index) => {
-    const el = makeCardElement(card, false);
+  ((arrangement && arrangement[row]) || []).forEach((c, i) => {
+    const el = makeCardElement(c, false);
     el.classList.add("reveal-card");
-    el.style.animationDelay = (index * 80) + "ms";
+    el.style.animationDelay = (i * 80) + "ms";
     cards.appendChild(el);
   });
   const total = document.createElement("div");
@@ -668,7 +677,7 @@ function finalizeReveal() {
   const readyArea = document.getElementById("ready-area");
   if (readyArea) readyArea.classList.remove("hidden");
 
-  // FEATURE 3: coins fly to the winner (once per round)
+  // Coin fly to winner (once per round)
   if (state.room && state.room.results && state.coinsFlyedFor !== state.room.roundNumber) {
     const winner = state.room.results.rankings && state.room.results.rankings[0];
     if (winner) flyCoinsToWinner(winner.uid);
@@ -685,7 +694,6 @@ function skipReveal() {
   const myPlayer = currentUserPlayerObject();
   const mySeat = myPlayer ? myPlayer.seat : 0;
 
-  // SPECIAL HAND ANNOUNCEMENT (skip path)
   const specialPlayers = [];
   state.room.players.forEach((pl) => {
     const spec = results.specials ? results.specials[pl.uid] : null;
@@ -721,7 +729,6 @@ function playRevealSequence(results) {
   ["top", "left", "right", "bottom"].forEach((p) => { const el = document.getElementById("reveal-" + p); if (el) el.innerHTML = ""; });
   updateScorePanel(results, state.user.uid, []);
 
-  // SPECIAL HAND ANNOUNCEMENT (normal reveal path)
   const specialPlayers = [];
   state.room.players.forEach((pl) => {
     const spec = results.specials ? results.specials[pl.uid] : null;
@@ -1027,7 +1034,6 @@ function renderResultsSection() {
   renderResultBoards(results);
   renderReadyArea();
 
-  // Spectator Join Game button in Results Overlay
   const joinGameResultsBtn = $("#join-game-results-button");
   if (joinGameResultsBtn) {
     const isSpectator = currentUserInRoomSpectators();
@@ -1096,7 +1102,6 @@ function renderReadyArea() {
   const showForceStart = isHost();
   if (forceStartButton) forceStartButton.classList.toggle("hidden", !showForceStart);
 
-  // Spectator Join Game button in Ready Area
   const joinGameReadyBtn = $("#join-game-ready-button");
   if (joinGameReadyBtn) {
     const isSpectator = currentUserInRoomSpectators();
@@ -1131,7 +1136,9 @@ function renderRoom() {
   }
   state.lastStatus = state.room.status;
   const tableEl = document.querySelector(".pg-table");
-  if (tableEl) tableEl.classList.toggle("arranging", ["arranging", "scoring"].includes(state.room.status) && currentUserInRoomPlayers());
+  if (tableEl) {
+    tableEl.classList.toggle("arranging", ["arranging", "scoring"].includes(state.room.status) && currentUserInRoomPlayers());
+  }
   renderRoomInfo();
   renderSeats();
   syncCashListeners();
@@ -1162,7 +1169,11 @@ function manageHandListener() {
       if (state.room && state.room.status === "arranging") renderArrangeSection();
     });
   }
-  if (!shouldListen && state.unsubHand) { state.unsubHand(); state.unsubHand = null; state.handData = null; }
+  if (!shouldListen && state.unsubHand) {
+    state.unsubHand();
+    state.unsubHand = null;
+    state.handData = null;
+  }
 }
 
 async function hostController() {
@@ -1175,39 +1186,76 @@ async function hostController() {
   const humans = room.players.filter((p) => !p.isBot);
   const fail = () => {
     state.hostFailCount = (state.hostFailCount || 0) + 1;
-    if (state.hostFailCount >= 3) { state.hostCooldownUntil = Date.now() + 10000; state.hostFailCount = 0; console.warn("hostController backing off 10s"); }
+    if (state.hostFailCount >= 3) {
+      state.hostCooldownUntil = Date.now() + 10000;
+      state.hostFailCount = 0;
+      console.warn("hostController backing off 10s");
+    }
   };
   const succeed = () => { state.hostFailCount = 0; };
+
   if (room.status === "scoring") {
     const stuckFor = Date.now() - (room.updatedAt || 0);
     if (stuckFor > 20000) {
       console.warn("Scoring stuck for 20s, retrying finishRound");
       state.hostBusy = true;
-      try { await finishRound(room.roomCode, state.user); succeed(); } catch (error) { console.error(error); fail(); } finally { state.hostBusy = false; }
+      try { await finishRound(room.roomCode, state.user); succeed(); }
+      catch (error) { console.error(error); fail(); }
+      finally { state.hostBusy = false; }
     }
     return;
   }
+
   if (room.status === "arranging") {
     const allSubmitted = room.players.every((p) => p.submitted);
     const timerExpired = room.phaseEndsAt && Date.now() > room.phaseEndsAt;
     const gracePeriod = timerExpired && (Date.now() - room.phaseEndsAt > 10000);
     if (allSubmitted || gracePeriod) {
       state.hostBusy = true;
-      try { await finishRound(room.roomCode, state.user); succeed(); } catch (error) { console.error(error); fail(); } finally { state.hostBusy = false; }
+      try { await finishRound(room.roomCode, state.user); succeed(); }
+      catch (error) { console.error(error); fail(); }
+      finally { state.hostBusy = false; }
     }
     return;
   }
+
   if (room.status === "round_end") {
-    if (humans.length === 0) return;
-    const readyHumans = humans.filter((p) => p.ready);
-    if (readyHumans.length === humans.length) {
+    // Bot-only table: kill it immediately
+    if (humans.length === 0) {
       state.hostBusy = true;
-      try { await sleep(800); await startRound(room.roomCode, state.user); succeed(); } catch (error) { console.error(error); setRoomMessage(error.message || "Failed to start next round."); fail(); } finally { state.hostBusy = false; }
+      try { await deleteRoomFully(room.roomCode, room.players); }
+      catch (error) { console.error(error); }
+      finally { state.hostBusy = false; }
       return;
     }
-    if (room.phaseEndsAt && Date.now() > room.phaseEndsAt && readyHumans.length > 0) {
+
+    const readyHumans = humans.filter((p) => p.ready);
+
+    // Everyone ready: start next round
+    if (readyHumans.length === humans.length) {
       state.hostBusy = true;
-      try { await replaceUnreadyWithBots(room.roomCode); await startRound(room.roomCode, state.user); succeed(); } catch (error) { console.error(error); fail(); } finally { state.hostBusy = false; }
+      try { await sleep(800); await startRound(room.roomCode, state.user); succeed(); }
+      catch (error) { console.error(error); setRoomMessage(error.message || "Failed to start next round."); fail(); }
+      finally { state.hostBusy = false; }
+      return;
+    }
+
+    // Ready deadline passed: kick unready players (host included)
+    const deadline = room.phaseEndsAt || ((room.updatedAt || 0) + READY_FALLBACK_MS);
+    if (Date.now() > deadline) {
+      state.hostBusy = true;
+      try {
+        const res = await enforceReadyDeadline(room.roomCode);
+        if (res && res.empty) {
+          setRoomMessage("No ready players — table closed.");
+          await deleteRoomFully(room.roomCode, room.players);
+        } else if (res && res.kicked && res.kicked.length) {
+          setRoomMessage("Removed for not ready: " + res.kicked.map((p) => p.displayName).join(", "));
+          await startRound(room.roomCode, state.user);
+        }
+        succeed();
+      } catch (error) { console.error(error); fail(); }
+      finally { state.hostBusy = false; }
     }
   }
 }
@@ -1262,19 +1310,6 @@ watchAuth((user) => {
   else showScreen("menu");
 });
 
-// Keep occupied tables alive: send a heartbeat every 30s
-setInterval(() => {
-  if (!state.room || !state.user) return;
-  const inRoom = currentUserInRoomPlayers() || currentUserInRoomSpectators();
-  if (!inRoom) return;
-
-  const now = Date.now();
-  if (now - (state.lastHeartbeatSent || 0) < 30000) return;
-  state.lastHeartbeatSent = now;
-
-  heartbeatRoom(state.roomId);
-}, 5000);
-
 setInterval(() => {
   if (!state.room) return;
   renderRoomInfo();
@@ -1297,11 +1332,23 @@ setInterval(() => {
   hostController();
 }, 700);
 
+// Heartbeat: keeps occupied tables alive (3-min sweep only kills abandoned ones)
+setInterval(() => {
+  if (!state.room || !state.user) return;
+  const inRoom = currentUserInRoomPlayers() || currentUserInRoomSpectators();
+  if (!inRoom) return;
+  const now = Date.now();
+  if (now - (state.lastHeartbeatSent || 0) < 30000) return;
+  state.lastHeartbeatSent = now;
+  heartbeatRoom(state.roomId);
+}, 5000);
+
 $("#login-button").addEventListener("click", async () => {
   const username = $("#login-username").value;
   const pin = $("#login-pin").value;
   setText("#login-error", "");
-  try { await loginOrRegister(username, pin); } catch (error) { setText("#login-error", error.message || "Login failed."); }
+  try { await loginOrRegister(username, pin); }
+  catch (error) { setText("#login-error", error.message || "Login failed."); }
 });
 
 $("#logout-button").addEventListener("click", async () => { clearRoomState(); await logoutUser(); });
@@ -1341,7 +1388,8 @@ $("#join-room-button").addEventListener("click", async () => {
 });
 
 async function exitToMenu() {
-  try { if (state.roomId && state.user) await leaveRoom(state.user, state.roomId); } catch (error) { console.warn("leaveRoom failed, escaping locally:", error); }
+  try { if (state.roomId && state.user) await leaveRoom(state.user, state.roomId); }
+  catch (error) { console.warn("leaveRoom failed, escaping locally:", error); }
   clearRoomState();
   showScreen("menu");
   syncRoomsListener();
@@ -1354,9 +1402,7 @@ async function handleJoinGame() {
   try {
     await takeSeat(state.user, state.roomId, state.userData?.displayName || state.user.username);
     setRoomMessage("Joined the game!");
-  } catch (error) {
-    setRoomMessage(error.message || "Cannot join game.");
-  }
+  } catch (error) { setRoomMessage(error.message || "Cannot join game."); }
 }
 
 const joinGameButton = $("#join-game-button");
@@ -1387,8 +1433,7 @@ $("#admin-load-player-button").addEventListener("click", async () => {
   if (!username) { setAdminMessage("Enter a username."); return; }
   const userData = await getUserData(username);
   if (!userData) { setText("#admin-player-info", "User not found."); return; }
-  const infoBox = $("#admin-player-info");
-  if (infoBox) infoBox.innerHTML = `<div>Username: ${userData.username}</div><div>Display Name: ${userData.displayName}</div><div>Cash: ${userData.cash}</div><div>Games: ${userData.games || 0}</div><div>Wins: ${userData.wins || 0}</div><div>Points: ${userData.points || 0}</div>`;
+  setText("#admin-player-info", `Username: ${userData.username} | Cash: ${userData.cash} | Games: ${userData.games || 0} | Wins: ${userData.wins || 0} | Points: ${userData.points || 0}`);
   const nameField = $("#admin-display-name");
   if (nameField) nameField.value = userData.displayName || "";
 });
@@ -1397,7 +1442,8 @@ $("#admin-save-name-button").addEventListener("click", async () => {
   const username = $("#admin-player-username").value.trim().toLowerCase();
   const displayName = $("#admin-display-name").value.trim();
   if (!username || !displayName) { setAdminMessage("Username and display name required."); return; }
-  try { await updateDisplayName(username, displayName, state.user?.username || "admin"); setAdminMessage("Display name updated."); } catch (error) { setAdminMessage(error.message || "Failed to update display name."); }
+  try { await updateDisplayName(username, displayName, state.user?.username || "admin"); setAdminMessage("Display name updated."); }
+  catch (error) { setAdminMessage(error.message || "Failed to update display name."); }
 });
 
 $("#admin-add-cash-button").addEventListener("click", async () => {
@@ -1405,7 +1451,8 @@ $("#admin-add-cash-button").addEventListener("click", async () => {
   const amount = Number($("#admin-cash-amount").value) || 0;
   const reason = $("#admin-cash-reason").value;
   if (!username || amount <= 0) { setAdminMessage("Enter username and positive amount."); return; }
-  try { await adjustCash(username, amount, "admin_transfer", reason, state.user?.username || "admin"); await addAdminLog(state.user?.username || "admin", "add_cash", username, { amount, reason }); setAdminMessage("Cash added."); } catch (error) { setAdminMessage(error.message || "Failed to add cash."); }
+  try { await adjustCash(username, amount, "admin_transfer", reason, state.user?.username || "admin"); await addAdminLog(state.user?.username || "admin", "add_cash", username, { amount, reason }); setAdminMessage("Cash added."); }
+  catch (error) { setAdminMessage(error.message || "Failed to add cash."); }
 });
 
 $("#admin-deduct-cash-button").addEventListener("click", async () => {
@@ -1413,7 +1460,8 @@ $("#admin-deduct-cash-button").addEventListener("click", async () => {
   const amount = Number($("#admin-cash-amount").value) || 0;
   const reason = $("#admin-cash-reason").value;
   if (!username || amount <= 0) { setAdminMessage("Enter username and positive amount."); return; }
-  try { await adjustCash(username, -amount, "admin_deduct", reason, state.user?.username || "admin"); await addAdminLog(state.user?.username || "admin", "deduct_cash", username, { amount, reason }); setAdminMessage("Cash deducted."); } catch (error) { setAdminMessage(error.message || "Failed to deduct cash."); }
+  try { await adjustCash(username, -amount, "admin_deduct", reason, state.user?.username || "admin"); await addAdminLog(state.user?.username || "admin", "deduct_cash", username, { amount, reason }); setAdminMessage("Cash deducted."); }
+  catch (error) { setAdminMessage(error.message || "Failed to deduct cash."); }
 });
 
 $("#admin-set-cash-button").addEventListener("click", async () => {
@@ -1421,7 +1469,8 @@ $("#admin-set-cash-button").addEventListener("click", async () => {
   const amount = Number($("#admin-cash-amount").value) || 0;
   const reason = $("#admin-cash-reason").value;
   if (!username) { setAdminMessage("Enter username."); return; }
-  try { await setCash(username, amount, reason, state.user?.username || "admin"); await addAdminLog(state.user?.username || "admin", "set_cash", username, { amount, reason }); setAdminMessage("Cash set."); } catch (error) { setAdminMessage(error.message || "Failed to set cash."); }
+  try { await setCash(username, amount, reason, state.user?.username || "admin"); await addAdminLog(state.user?.username || "admin", "set_cash", username, { amount, reason }); setAdminMessage("Cash set."); }
+  catch (error) { setAdminMessage(error.message || "Failed to set cash."); }
 });
 
 $("#admin-save-room-button").addEventListener("click", async () => {
@@ -1434,18 +1483,21 @@ $("#admin-save-room-button").addEventListener("click", async () => {
     autoFillBots: $("#admin-room-auto-fill-bots").checked,
     scoopBonus: $("#admin-room-scoop-bonus").checked
   };
-  try { await updateRoomSettings(state.roomId, settings); await addAdminLog(state.user?.username || "admin", "room_settings", state.roomId, settings); setAdminMessage("Room settings saved."); } catch (error) { setAdminMessage(error.message || "Failed to save room settings."); }
+  try { await updateRoomSettings(state.roomId, settings); await addAdminLog(state.user?.username || "admin", "room_settings", state.roomId, settings); setAdminMessage("Room settings saved."); }
+  catch (error) { setAdminMessage(error.message || "Failed to save room settings."); }
 });
 
 $("#admin-fill-bots-button").addEventListener("click", async () => {
   if (!state.roomId) { setAdminMessage("You are not in a room."); return; }
-  try { await fillBotsInRoom(state.roomId); setAdminMessage("Bots filled."); } catch (error) { setAdminMessage(error.message || "Failed to fill bots."); }
+  try { await fillBotsInRoom(state.roomId); setAdminMessage("Bots filled."); }
+  catch (error) { setAdminMessage(error.message || "Failed to fill bots."); }
 });
 
 $("#admin-force-start-button").addEventListener("click", async () => {
   if (!state.roomId) { setAdminMessage("You are not in a room."); return; }
   if (!isHost()) { setAdminMessage("Only the room host can force start."); return; }
-  try { await replaceUnreadyWithBots(state.roomId); await startRound(state.roomId, state.user); setAdminMessage("Round started."); } catch (error) { setAdminMessage(error.message || "Failed to force start."); }
+  try { await replaceUnreadyWithBots(state.roomId); await startRound(state.roomId, state.user); setAdminMessage("Round started."); }
+  catch (error) { setAdminMessage(error.message || "Failed to force start."); }
 });
 
 document.addEventListener("click", (event) => {
@@ -1517,7 +1569,8 @@ if (claimDailyBtn && !claimDailyBtn.dataset.bound) {
   claimDailyBtn.addEventListener("click", async () => {
     if (!state.user) return;
     const msg = $("#menu-message");
-    try { await claimDailyBonus(state.user.username); if (msg) msg.textContent = "🎉 +10,000 coins claimed!"; } catch (error) { if (msg) msg.textContent = error.message || "Claim failed."; }
+    try { await claimDailyBonus(state.user.username); if (msg) msg.textContent = "🎉 +10,000 coins claimed!"; }
+    catch (error) { if (msg) msg.textContent = error.message || "Claim failed."; }
   });
 }
 
@@ -1575,17 +1628,17 @@ function renderTransactionHistory() {
     if (tx.type === "daily_bonus") { icon = "🎁"; label = "Daily Bonus"; detail = "Login reward"; amountClass = "tx-pos"; }
     else if (tx.type === "transfer_in") { icon = "📥"; label = "Received"; detail = "From @" + (tx.from || "?"); amountClass = "tx-pos"; }
     else if (tx.type === "transfer_out") { icon = "📤"; label = "Sent"; detail = "To @" + (tx.to || "?"); amountClass = "tx-neg"; }
-    else if (tx.type === "game_settle") { icon = "🎮"; label = "Game Settlement"; detail = tx.note || "Settlement"; amountClass = amount >= 0 ? "tx-pos" : "tx-neg"; }
+    else if (tx.type === "game_settle") { icon = "🎮"; label = "Game Settlement"; detail = tx.note || "Settlement"; }
     else if (tx.type === "room_entry") { icon = "🎟️"; label = "Room Entry"; amountClass = "tx-neg"; }
     else if (tx.type === "game_win") { icon = "🏆"; label = "Game Win"; amountClass = "tx-pos"; }
-    else if (tx.type === "admin_transfer") { icon = "🛠️"; label = "Admin Add Cash"; detail = tx.note || "Admin adjustment"; amountClass = amount >= 0 ? "tx-pos" : "tx-neg"; }
-    else if (tx.type === "admin_deduct") { icon = "🛠️"; label = "Admin Deduct Cash"; detail = tx.note || "Admin adjustment"; amountClass = amount >= 0 ? "tx-pos" : "tx-neg"; }
-    else if (tx.type === "admin_set") { icon = "🛠️"; label = "Admin Set Cash"; detail = tx.note || "Admin adjustment"; amountClass = amount >= 0 ? "tx-pos" : "tx-neg"; }
+    else if (tx.type === "admin_transfer") { icon = "🛠️"; label = "Admin Add Cash"; detail = tx.note || "Admin adjustment"; }
+    else if (tx.type === "admin_deduct") { icon = "🛠️"; label = "Admin Deduct Cash"; detail = tx.note || "Admin adjustment"; }
+    else if (tx.type === "admin_set") { icon = "🛠️"; label = "Admin Set Cash"; detail = tx.note || "Admin adjustment"; }
     const amountStr = (amount >= 0 ? "+" : "") + formatCash(amount);
     const time = new Date(tx.createdAt || Date.now()).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
     const row = document.createElement("div");
     row.className = "tx-row";
-    row.innerHTML = `<div class="tx-icon">${icon}</div><div class="tx-body"><div class="tx-label">${label}</div><div class="tx-detail">${detail}</div><div class="tx-time">${time}</div></div><div class="tx-amount ${amountClass}">${amountStr}</div>`;
+    row.innerHTML = '<div class="tx-icon">' + icon + '</div><div class="tx-body"><div class="tx-label">' + label + '</div><div class="tx-detail">' + detail + '</div><div class="tx-time">' + time + '</div></div><div class="tx-amount ' + amountClass + '">' + amountStr + '</div>';
     list.appendChild(row);
   });
 }
@@ -1603,7 +1656,7 @@ document.addEventListener("click", (e) => {
 });
 
 /* =========================================================
-   UI ENHANCEMENTS v3 (FIXED SPACING + EXIT BUTTONS)
+   UI ENHANCEMENTS (swap FAB + exit buttons + HUD z-index)
    ========================================================= */
 function injectExtraStyles() {
   if (document.getElementById("cardex-extra-styles")) return;
