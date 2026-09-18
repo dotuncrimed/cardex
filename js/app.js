@@ -1262,6 +1262,19 @@ watchAuth((user) => {
   else showScreen("menu");
 });
 
+// Keep occupied tables alive: send a heartbeat every 30s
+setInterval(() => {
+  if (!state.room || !state.user) return;
+  const inRoom = currentUserInRoomPlayers() || currentUserInRoomSpectators();
+  if (!inRoom) return;
+
+  const now = Date.now();
+  if (now - (state.lastHeartbeatSent || 0) < 30000) return;
+  state.lastHeartbeatSent = now;
+
+  heartbeatRoom(state.roomId);
+}, 5000);
+
 setInterval(() => {
   if (!state.room) return;
   renderRoomInfo();
