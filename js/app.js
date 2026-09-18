@@ -37,7 +37,6 @@ import {
   updateDisplayName,
   addAdminLog,
   listenAllUsers,
-  declareSpecial,
   listenAllRooms,
   spectateRoom,
   sweepStaleRooms,
@@ -895,7 +894,6 @@ function rowLabelInfo(row) {
   }
 
   const ev = evaluate5(arr.back);
-
   let ok = arr.back.length === 5;
 
   if (ok && arr.middle.length === 5) {
@@ -977,7 +975,6 @@ function renderMyRows() {
       }
 
       el.style.setProperty("--rot", `${((index - mid) * 4).toFixed(1)}deg`);
-
       el.addEventListener("click", () => onMyCardTap(row, index));
 
       container.appendChild(el);
@@ -1105,6 +1102,21 @@ function skipReveal() {
   const myPlayer = currentUserPlayerObject();
   const mySeat = myPlayer ? myPlayer.seat : 0;
 
+  // 🚨 SPECIAL HAND ANNOUNCEMENT - SKIP REVEAL 🚨
+  const specialPlayers = [];
+
+  state.room.players.forEach((pl) => {
+    const spec = results.specials ? results.specials[pl.uid] : null;
+    if (spec) {
+      specialPlayers.push(`${pl.displayName} — ${spec.name}`);
+    }
+  });
+
+  if (specialPlayers.length > 0) {
+    showBanner("✨ SPECIAL HAND! ✨", 3000);
+    setRoomMessage("✨ " + specialPlayers.join(" | "));
+  }
+
   state.room.players.forEach((pl) => {
     const full = ["front", "middle", "back"].reduce((s, k) => {
       return s + rowScoreFor(results, pl.uid, k);
@@ -1152,6 +1164,21 @@ function playRevealSequence(results) {
   });
 
   updateScorePanel(results, state.user.uid, []);
+
+  // 🚨 SPECIAL HAND ANNOUNCEMENT - NORMAL REVEAL 🚨
+  const specialPlayers = [];
+
+  state.room.players.forEach((pl) => {
+    const spec = results.specials ? results.specials[pl.uid] : null;
+    if (spec) {
+      specialPlayers.push(`${pl.displayName} — ${spec.name}`);
+    }
+  });
+
+  if (specialPlayers.length > 0) {
+    showBanner("✨ SPECIAL HAND! ✨", 3000);
+    setRoomMessage("✨ " + specialPlayers.join(" | "));
+  }
 
   const myPlayer = currentUserPlayerObject();
   const mySeat = myPlayer ? myPlayer.seat : 0;
@@ -2421,16 +2448,21 @@ if (adminLoadPlayerButton) {
       return;
     }
 
-    $("#admin-player-info").innerHTML = `
-      <div>Username: ${userData.username}</div>
-      <div>Display Name: ${userData.displayName}</div>
-      <div>Cash: ${userData.cash}</div>
-      <div>Games: ${userData.games || 0}</div>
-      <div>Wins: ${userData.wins || 0}</div>
-      <div>Points: ${userData.points || 0}</div>
-    `;
+    const infoBox = $("#admin-player-info");
 
-    $("#admin-display-name").value = userData.displayName || "";
+    if (infoBox) {
+      infoBox.innerHTML = `
+        <div>Username: ${userData.username}</div>
+        <div>Display Name: ${userData.displayName}</div>
+        <div>Cash: ${userData.cash}</div>
+        <div>Games: ${userData.games || 0}</div>
+        <div>Wins: ${userData.wins || 0}</div>
+        <div>Points: ${userData.points || 0}</div>
+      `;
+    }
+
+    const nameField = $("#admin-display-name");
+    if (nameField) nameField.value = userData.displayName || "";
   });
 }
 
