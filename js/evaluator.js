@@ -1,12 +1,10 @@
-import { rankValue, suitOf } from "./cards.js";
+import { rankValue, suitOf, rankOf } from "./cards.js";
 
 function getCounts(values) {
   const map = new Map();
-
   for (const value of values) {
     map.set(value, (map.get(value) || 0) + 1);
   }
-
   return Array.from(map.entries())
     .map(([value, count]) => ({ value, count }))
     .sort((a, b) => b.count - a.count || b.value - a.value);
@@ -14,39 +12,36 @@ function getCounts(values) {
 
 function getStraightHigh(values) {
   const unique = [...new Set(values)].sort((a, b) => b - a);
-
+  
+  // Check for Ace-low straight (A-2-3-4-5)
   const hasWheel =
     unique.includes(14) &&
     unique.includes(2) &&
     unique.includes(3) &&
     unique.includes(4) &&
     unique.includes(5);
-
+  
   if (hasWheel) {
     return 5;
   }
-
+  
   for (let i = 0; i <= unique.length - 5; i++) {
     if (unique[i] - unique[i + 4] === 4) {
       return unique[i];
     }
   }
-
   return null;
 }
 
 function compareArrays(a, b) {
   const length = Math.max(a.length, b.length);
-
   for (let i = 0; i < length; i++) {
     const av = a[i] ?? 0;
     const bv = b[i] ?? 0;
-
     if (av !== bv) {
       return av - bv;
     }
   }
-
   return 0;
 }
 
@@ -54,10 +49,10 @@ export function evaluate5(cards) {
   if (!Array.isArray(cards) || cards.length !== 5) {
     throw new Error("Five-card hand required.");
   }
-
+  
   const values = cards.map(rankValue).sort((a, b) => b - a);
   const suits = cards.map(suitOf);
-
+  
   const isFlush = suits.every((suit) => suit === suits[0]);
   const straightHigh = getStraightHigh(values);
   const counts = getCounts(values);
@@ -69,7 +64,6 @@ export function evaluate5(cards) {
       name: straightHigh === 14 ? "Royal Flush" : "Straight Flush"
     };
   }
-
   if (counts[0].count === 4) {
     return {
       category: 8,
@@ -77,7 +71,6 @@ export function evaluate5(cards) {
       name: "Four of a Kind"
     };
   }
-
   if (counts[0].count === 3 && counts[1].count === 2) {
     return {
       category: 7,
@@ -85,7 +78,6 @@ export function evaluate5(cards) {
       name: "Full House"
     };
   }
-
   if (isFlush) {
     return {
       category: 6,
@@ -93,7 +85,6 @@ export function evaluate5(cards) {
       name: "Flush"
     };
   }
-
   if (straightHigh) {
     return {
       category: 5,
@@ -101,41 +92,27 @@ export function evaluate5(cards) {
       name: "Straight"
     };
   }
-
   if (counts[0].count === 3) {
     return {
       category: 4,
-      tiebreakers: [
-        counts[0].value,
-        ...counts.slice(1).map((item) => item.value)
-      ],
+      tiebreakers: [counts[0].value, ...counts.slice(1).map((item) => item.value)],
       name: "Three of a Kind"
     };
   }
-
   if (counts[0].count === 2 && counts[1].count === 2) {
     return {
       category: 3,
-      tiebreakers: [
-        counts[0].value,
-        counts[1].value,
-        counts[2].value
-      ],
+      tiebreakers: [counts[0].value, counts[1].value, counts[2].value],
       name: "Two Pair"
     };
   }
-
   if (counts[0].count === 2) {
     return {
       category: 2,
-      tiebreakers: [
-        counts[0].value,
-        ...counts.slice(1).map((item) => item.value)
-      ],
+      tiebreakers: [counts[0].value, ...counts.slice(1).map((item) => item.value)],
       name: "One Pair"
     };
   }
-
   return {
     category: 1,
     tiebreakers: values,
@@ -147,7 +124,7 @@ export function evaluate3(cards) {
   if (!Array.isArray(cards) || cards.length !== 3) {
     throw new Error("Three-card hand required.");
   }
-
+  
   const values = cards.map(rankValue).sort((a, b) => b - a);
   const counts = getCounts(values);
 
@@ -158,7 +135,6 @@ export function evaluate3(cards) {
       name: "Three of a Kind"
     };
   }
-
   if (counts[0].count === 2) {
     return {
       category: 2,
@@ -166,7 +142,6 @@ export function evaluate3(cards) {
       name: "Pair"
     };
   }
-
   return {
     category: 1,
     tiebreakers: values,
@@ -178,7 +153,6 @@ export function compare5(a, b) {
   if (a.category !== b.category) {
     return a.category - b.category;
   }
-
   return compareArrays(a.tiebreakers, b.tiebreakers);
 }
 
@@ -186,27 +160,22 @@ export function compare3(a, b) {
   if (a.category !== b.category) {
     return a.category - b.category;
   }
-
   return compareArrays(a.tiebreakers, b.tiebreakers);
 }
 
 export function strength5(evaluated) {
-  const categoryScore = evaluated.category * 1_000_000;
-
+  const categoryScore = evaluated.category * 1000000;
   const tieScore = evaluated.tiebreakers.reduce((sum, value, index) => {
     return sum + value * Math.pow(15, 4 - index);
   }, 0);
-
   return categoryScore + tieScore;
 }
 
 export function strength3(evaluated) {
-  const categoryScore = evaluated.category * 1_000_000;
-
+  const categoryScore = evaluated.category * 1000000;
   const tieScore = evaluated.tiebreakers.reduce((sum, value, index) => {
     return sum + value * Math.pow(15, 2 - index);
   }, 0);
-
   return categoryScore + tieScore;
 }
 
@@ -214,7 +183,6 @@ export function arrangementScore(arrangement) {
   const back = evaluate5(arrangement.back);
   const middle = evaluate5(arrangement.middle);
   const front = evaluate3(arrangement.front);
-
   return (
     strength5(back) * 1.15 +
     strength5(middle) * 1.0 +
@@ -224,7 +192,6 @@ export function arrangementScore(arrangement) {
 
 export function isLegalArrangement(arrangement) {
   const { front, middle, back } = arrangement;
-
   if (!front || front.length !== 3) return false;
   if (!middle || middle.length !== 5) return false;
   if (!back || back.length !== 5) return false;
@@ -233,19 +200,22 @@ export function isLegalArrangement(arrangement) {
   const middleEval = evaluate5(middle);
   const frontEval = evaluate3(front);
 
+  // Back must be >= Middle
   if (compare5(backEval, middleEval) < 0) {
     return false;
   }
 
+  // Middle must be >= Front (adjusted for 3-card vs 5-card categories)
   const requiredMiddleCategory =
     frontEval.category === 3 ? 3 :
     frontEval.category === 2 ? 2 :
     1;
-
+    
   if (middleEval.category < requiredMiddleCategory) {
     return false;
   }
 
+  // Tiebreaker checks for identical categories
   if (
     frontEval.category === 1 &&
     middleEval.category === 1 &&
@@ -253,7 +223,6 @@ export function isLegalArrangement(arrangement) {
   ) {
     return false;
   }
-
   if (
     frontEval.category === 2 &&
     middleEval.category === 2 &&
@@ -305,8 +274,6 @@ export function getRoyalty(arrangement) {
   return { front, middle, back, total: front + middle + back };
 }
 
-import { rankOf } from "./cards.js";
-
 export function detectSpecial(hand) {
   if (!hand || hand.length !== 13) return null;
 
@@ -319,6 +286,7 @@ export function detectSpecial(hand) {
   }
 
   // Tier 4: All Black/Red - all 13 cards same color
+  // FIXED: Removed phantom spaces from "H", "D", "R", "B"
   const colorSet = new Set(suits.map((s) => (s === "H" || s === "D" ? "R" : "B")));
   if (colorSet.size === 1) {
     return {
