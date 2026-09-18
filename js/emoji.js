@@ -1,6 +1,5 @@
 // js/emoji.js
-// Feature 2: In-game emoji splash (multiplayer-synced)
-// FIXED: Button is now inside the table area, and targeting accurately hits all seats.
+// Feature 2: In-game emoji splash (Avatar-click to send, true multiplayer pathing)
 
 import { db } from "./firebase.js";
 import {
@@ -28,8 +27,6 @@ const emState = {
   unsubEmojis: null,
   subscribeTs: 0,
   seen: new Set(),
-  trayOpen: false,
-  pickedEmoji: null,
   lastSentAt: 0
 };
 
@@ -38,303 +35,89 @@ function seatOffset(playerSeat, mySeat) {
 }
 
 function injectEmojiStyles() {
-  if (document.getElementById("emoji-styles")) return;
+  if (document.getElementById("emoji-styles-v2")) return;
 
   const style = document.createElement("style");
-  style.id = "emoji-styles";
+  style.id = "emoji-styles-v2";
 
   style.textContent = `
-    /* Button is now ABSOLUTE inside .pg-table */
-    #emoji-tray-toggle {
-      position: absolute; 
-      right: 16px; 
-      bottom: 80px; 
-      z-index: 26;
-      width: 52px; height: 52px; border-radius: 50%;
-      border: 3px solid rgba(255,255,255,.85);
-      background: linear-gradient(145deg,#7c4dff,#536dfe);
-      color: #fff; font-size: 26px;
-      display: none; align-items: center; justify-content: center;
-      box-shadow: 0 4px 14px rgba(0,0,0,.5);
-      cursor: pointer; padding: 0;
+    #emoji-picker-modal {
+      position: fixed;
+      z-index: 1300;
+      background: rgba(7, 24, 15, 0.97);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 16px;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      animation: pickerPop 0.2s ease-out;
     }
-    #emoji-tray-toggle:active { transform: scale(.92); }
-
-    /* Tray remains FIXED to body so it doesn't get clipped by table overflow */
-    .emoji-tray, .emoji-targets {
-      position: fixed; right: 14px; bottom: 140px; z-index: 1250;
-      width: 250px; max-height: 60vh; overflow: auto;
-      background: rgba(7,24,15,.97);
-      border: 1px solid rgba(255,255,255,.16);
-      border-radius: 16px; padding: 12px;
+    @keyframes pickerPop {
+      from { transform: scale(0.8); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
     }
-
-    .emoji-tray-head, .emoji-targets-head {
-      font-weight: 800; font-size: 13px; color: #ffd54f; margin-bottom: 8px;
+    .emoji-pick-btn {
+      width: 44px;
+      height: 44px;
+      border: none;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.08);
+      font-size: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.1s, background 0.1s;
+      padding: 0;
     }
-
-    .emoji-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
-
-    .emoji-pick {
-      height: 40px; border: none; border-radius: 10px;
-      background: rgba(255,255,255,.08); font-size: 22px;
-      cursor: pointer; padding: 0;
+    .emoji-pick-btn:hover {
+      background: rgba(255, 213, 79, 0.3);
+      transform: scale(1.15);
     }
-    .emoji-pick.active { background: rgba(255,213,79,.35); outline: 2px solid #ffd54f; }
-
-    .emoji-close, .emoji-back {
-      width: 100%; margin-top: 8px; border: none; border-radius: 10px;
-      height: 34px; background: rgba(255,255,255,.12); color: #fff;
-      font-weight: 700; cursor: pointer;
-    }
-
-    .emoji-target-row {
-      display: flex; align-items: center; gap: 10px; width: 100%;
-      border: none; border-radius: 12px; background: rgba(255,255,255,.06);
-      color: #fff; padding: 8px 10px; margin-bottom: 6px;
-      cursor: pointer; font-size: 14px; font-weight: 700;
-    }
-    .emoji-target-row:hover { background: rgba(255,213,79,.2); }
-
-    .emoji-target-avatar {
-      width: 30px; height: 30px; border-radius: 50%;
-      background: linear-gradient(145deg,#ffd54f,#ff9800); color: #332000;
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 800; flex: 0 0 auto;
-    }
-
-    .emoji-target-name { flex: 1; text-align: left; }
-
-    #emoji-toast {
-      position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
-      z-index: 1300; background: rgba(0,0,0,.8); color: #fff;
-      border-radius: 999px; padding: 8px 18px;
-      font-weight: 700; font-size: 13px; display: none;
-    }
-
+    
     .emoji-fly {
-      position: absolute; z-index: 62; font-size: 30px;
-      pointer-events: none; animation: emojiFly .9s ease-in forwards;
+      position: absolute; z-index: 62; font-size: 36px;
+      pointer-events: none; animation: emojiFly 0.8s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
     }
-
     .emoji-splash {
       position: absolute; z-index: 63; transform: translate(-50%,-50%);
       pointer-events: none; display: flex; align-items: center; justify-content: center;
     }
-
-    .emoji-burst { font-size: 48px; animation: emojiSplash 1.4s ease-out forwards; }
-
+    .emoji-burst { font-size: 56px; animation: emojiSplash 1.2s ease-out forwards; }
     .emoji-ring {
-      position: absolute; width: 70px; height: 70px; border-radius: 50%;
+      position: absolute; width: 80px; height: 80px; border-radius: 50%;
       border: 4px solid rgba(255,213,79,.85);
-      animation: emojiRing 1s ease-out forwards;
+      animation: emojiRing 0.8s ease-out forwards;
     }
-
-    .emoji-tag {
-      position: absolute; top: 44px; white-space: nowrap;
-      background: rgba(0,0,0,.75); color: #ffe082;
-      border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 800;
-    }
-
+    
     @keyframes emojiFly {
-      0%   { transform: translate(0,0) scale(.5); opacity: 0; }
+      0%   { transform: translate(0,0) scale(0.6); opacity: 0; }
       15%  { opacity: 1; }
-      100% { transform: translate(var(--tx),var(--ty)) scale(1.15); opacity: 1; }
+      100% { transform: translate(var(--tx),var(--ty)) scale(1.2); opacity: 1; }
     }
-
     @keyframes emojiSplash {
-      0%   { transform: scale(.3); opacity: 0; }
-      25%  { transform: scale(1.5); opacity: 1; }
-      55%  { transform: scale(1.1); }
+      0%   { transform: scale(0.3); opacity: 0; }
+      30%  { transform: scale(1.5); opacity: 1; }
       100% { transform: scale(1.8); opacity: 0; }
     }
-
     @keyframes emojiRing {
-      0%   { transform: scale(.3); opacity: .9; }
+      0%   { transform: scale(0.3); opacity: .9; }
       100% { transform: scale(2.1); opacity: 0; }
     }
+    
+    /* Make avatars clearly clickable */
+    .seat .avatar { cursor: pointer; transition: transform 0.15s ease; }
+    .seat .avatar:hover { transform: scale(1.12); filter: brightness(1.2); }
   `;
 
   document.head.appendChild(style);
 }
 
-function toast(message) {
-  let el = document.getElementById("emoji-toast");
-
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "emoji-toast";
-    document.body.appendChild(el);
-  }
-
-  el.textContent = message;
-  el.style.display = "block";
-
-  clearTimeout(el._hideTimer);
-  el._hideTimer = setTimeout(() => {
-    el.style.display = "none";
-  }, 1600);
-}
-
-function ensureUI() {
-  if (document.getElementById("emoji-tray-toggle")) return;
-
-  const table = document.querySelector(".pg-table");
-  if (!table) return;
-
-  const toggle = document.createElement("button");
-  toggle.id = "emoji-tray-toggle";
-  toggle.textContent = "😂";
-  toggle.title = "Send an emoji";
-
-  toggle.addEventListener("click", () => {
-    emState.trayOpen = !emState.trayOpen;
-    emState.pickedEmoji = null;
-    renderTray();
-  });
-
-  // Append to table so it stays in the lower right of the table area
-  table.appendChild(toggle);
-
-  const tray = document.createElement("div");
-  tray.id = "emoji-tray";
-  tray.className = "emoji-tray hidden";
-  document.body.appendChild(tray);
-
-  const targets = document.createElement("div");
-  targets.id = "emoji-targets";
-  targets.className = "emoji-targets hidden";
-  document.body.appendChild(targets);
-}
-
 function roomVisible() {
   const rs = document.getElementById("room-screen");
   return Boolean(emState.roomId && rs && !rs.classList.contains("hidden"));
-}
-
-function refreshVisibility() {
-  const toggle = document.getElementById("emoji-tray-toggle");
-  if (!toggle) return;
-
-  const show = roomVisible() && Boolean(emState.user);
-  toggle.style.display = show ? "flex" : "none";
-
-  if (!show && emState.trayOpen) {
-    emState.trayOpen = false;
-    emState.pickedEmoji = null;
-    renderTray();
-  }
-}
-
-function renderTray() {
-  const tray = document.getElementById("emoji-tray");
-  const targets = document.getElementById("emoji-targets");
-  if (!tray || !targets) return;
-
-  if (!emState.trayOpen) {
-    tray.classList.add("hidden");
-    targets.classList.add("hidden");
-    return;
-  }
-
-  targets.classList.add("hidden");
-  tray.classList.remove("hidden");
-  tray.innerHTML = "";
-
-  const head = document.createElement("div");
-  head.className = "emoji-tray-head";
-  head.textContent = "Pick an emoji, then a player";
-  tray.appendChild(head);
-
-  const grid = document.createElement("div");
-  grid.className = "emoji-grid";
-
-  EMOJIS.forEach((emoji) => {
-    const b = document.createElement("button");
-    b.className = "emoji-pick" + (emState.pickedEmoji === emoji ? " active" : "");
-    b.textContent = emoji;
-
-    b.addEventListener("click", () => {
-      emState.pickedEmoji = emoji;
-      renderTargets();
-    });
-
-    grid.appendChild(b);
-  });
-
-  tray.appendChild(grid);
-
-  const close = document.createElement("button");
-  close.className = "emoji-close";
-  close.textContent = "Close";
-  close.addEventListener("click", () => {
-    emState.trayOpen = false;
-    renderTray();
-  });
-  tray.appendChild(close);
-}
-
-function renderTargets() {
-  const tray = document.getElementById("emoji-tray");
-  const targets = document.getElementById("emoji-targets");
-  if (!tray || !targets) return;
-
-  if (!emState.pickedEmoji) {
-    renderTray();
-    return;
-  }
-
-  tray.classList.add("hidden");
-  targets.classList.remove("hidden");
-  targets.innerHTML = "";
-
-  const head = document.createElement("div");
-  head.className = "emoji-targets-head";
-  head.textContent = "Send " + emState.pickedEmoji + " to...";
-  targets.appendChild(head);
-
-  const players = emState.room
-    ? [...emState.room.players].sort((a, b) => a.seat - b.seat)
-    : [];
-
-  if (players.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "emoji-targets-head";
-    empty.textContent = "Waiting for players...";
-    targets.appendChild(empty);
-  }
-
-  players.forEach((player) => {
-    const row = document.createElement("button");
-    row.className = "emoji-target-row";
-
-    const avatar = document.createElement("span");
-    avatar.className = "emoji-target-avatar";
-    avatar.textContent = (player.displayName || "?").charAt(0).toUpperCase();
-
-    const name = document.createElement("span");
-    name.className = "emoji-target-name";
-    name.textContent =
-      player.displayName +
-      (emState.user && player.uid === emState.user.uid ? " (You)" : "");
-
-    const aim = document.createElement("span");
-    aim.textContent = "🎯";
-
-    row.appendChild(avatar);
-    row.appendChild(name);
-    row.appendChild(aim);
-
-    row.addEventListener("click", () => sendEmoji(player));
-
-    targets.appendChild(row);
-  });
-
-  const back = document.createElement("button");
-  back.className = "emoji-back";
-  back.textContent = "← Back";
-  back.addEventListener("click", renderTray);
-  targets.appendChild(back);
 }
 
 function myPlayerSeat() {
@@ -343,16 +126,28 @@ function myPlayerSeat() {
   return me ? me.seat : null;
 }
 
-function playerSeat(uid) {
-  if (!emState.room) return null;
-  const p = emState.room.players.find((x) => x.uid === uid);
-  return p ? p.seat : null;
-}
-
-function myDisplayName() {
-  if (!emState.room || !emState.user) return emState.user ? emState.user.username : "?";
-  const me = emState.room.players.find((p) => p.uid === emState.user.uid);
-  return me ? me.displayName : emState.user.username;
+function getSeatCenter(seatIndex) {
+  const mySeat = myPlayerSeat() ?? 0; // Spectators default to 0 for visual offset
+  if (seatIndex === null || seatIndex === undefined) return null;
+  
+  const pos = SEAT_POS[seatOffset(seatIndex, mySeat)];
+  const el = document.querySelector("#seat-" + pos);
+  const table = document.querySelector(".pg-table");
+  if (!table) return null;
+  const lR = table.getBoundingClientRect();
+  
+  if (el && el.offsetParent !== null) {
+    const tR = el.getBoundingClientRect();
+    return { x: tR.left - lR.left + tR.width / 2, y: tR.top - lR.top + tR.height / 2 };
+  }
+  
+  // Fallbacks if hidden (e.g. bottom seat during arranging)
+  if (pos === "bottom") return { x: lR.width / 2, y: lR.height - 60 };
+  if (pos === "top") return { x: lR.width / 2, y: lR.height * 0.08 };
+  if (pos === "left") return { x: lR.width * 0.12, y: lR.height * 0.46 };
+  if (pos === "right") return { x: lR.width * 0.88, y: lR.height * 0.46 };
+  
+  return { x: lR.width / 2, y: lR.height / 2 };
 }
 
 function spawnBurst(table, x, y, ev) {
@@ -368,14 +163,8 @@ function spawnBurst(table, x, y, ev) {
   const ring = document.createElement("div");
   ring.className = "emoji-ring";
 
-  const tag = document.createElement("div");
-  tag.className = "emoji-tag";
-  tag.textContent = ev.fromName || "Someone";
-
   wrap.appendChild(ring);
   wrap.appendChild(burst);
-  wrap.appendChild(tag);
-
   table.appendChild(wrap);
 
   setTimeout(() => wrap.remove(), 1600);
@@ -385,53 +174,18 @@ function playSplash(ev) {
   const table = document.querySelector(".pg-table");
   if (!table) return;
 
-  // Use seats directly from the event payload to guarantee accuracy
-  const mySeat = ev.fromSeat ?? myPlayerSeat();
-  const targetSeat = ev.toSeat ?? playerSeat(ev.toUid);
+  const start = getSeatCenter(ev.fromSeat);
+  const end = getSeatCenter(ev.toSeat);
 
-  let targetEl = null;
-  if (targetSeat !== null && mySeat !== null) {
-    targetEl = document.querySelector("#seat-" + SEAT_POS[seatOffset(targetSeat, mySeat)]);
-  }
-
-  const lR = table.getBoundingClientRect();
-  const tR = targetEl ? targetEl.getBoundingClientRect() : null;
-
-  let tx, ty;
-
-  // If the element is hidden (display: none) or missing, fallback to CSS layout percentages
-  if (tR && tR.width > 0) {
-    tx = tR.left - lR.left + tR.width / 2;
-    ty = tR.top - lR.top + tR.height / 2;
-  } else {
-    if (targetSeat === 0) { // bottom
-      tx = lR.width / 2;
-      ty = lR.height - 60;
-    } else if (targetSeat === 1) { // left
-      tx = lR.width * 0.12;
-      ty = lR.height * 0.46;
-    } else if (targetSeat === 2) { // top
-      tx = lR.width / 2;
-      ty = lR.height * 0.08;
-    } else if (targetSeat === 3) { // right
-      tx = lR.width * 0.88;
-      ty = lR.height * 0.46;
-    } else {
-      tx = lR.width / 2;
-      ty = lR.height / 2;
-    }
-  }
-
-  const sx = lR.width / 2;
-  const sy = lR.height - 60;
+  if (!start || !end) return;
 
   const fly = document.createElement("div");
   fly.className = "emoji-fly";
   fly.textContent = ev.emoji || "😀";
-  fly.style.left = sx + "px";
-  fly.style.top = sy + "px";
-  fly.style.setProperty("--tx", (tx - sx) + "px");
-  fly.style.setProperty("--ty", (ty - sy) + "px");
+  fly.style.left = start.x + "px";
+  fly.style.top = start.y + "px";
+  fly.style.setProperty("--tx", (end.x - start.x) + "px");
+  fly.style.setProperty("--ty", (end.y - start.y) + "px");
 
   table.appendChild(fly);
 
@@ -440,24 +194,72 @@ function playSplash(ev) {
     if (done) return;
     done = true;
     fly.remove();
-    spawnBurst(table, tx, ty, ev);
+    spawnBurst(table, end.x, end.y, ev);
   };
 
   fly.addEventListener("animationend", land, { once: true });
   setTimeout(land, 1400);
 }
 
+function showEmojiPicker(targetPlayer, anchorEl) {
+  let modal = document.getElementById("emoji-picker-modal");
+  if (modal) modal.remove();
+
+  modal = document.createElement("div");
+  modal.id = "emoji-picker-modal";
+  
+  EMOJIS.forEach((emoji) => {
+    const btn = document.createElement("button");
+    btn.className = "emoji-pick-btn";
+    btn.textContent = emoji;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      sendEmoji(targetPlayer, emoji);
+      modal.remove();
+    });
+    modal.appendChild(btn);
+  });
+
+  document.body.appendChild(modal);
+
+  // Position near the avatar
+  const rect = anchorEl.getBoundingClientRect();
+  const modalWidth = 244; // 5 * 44 + 4 * 8 + 24 padding
+  let left = rect.left + rect.width / 2 - modalWidth / 2;
+  let top = rect.bottom + 12;
+
+  if (left < 10) left = 10;
+  if (left + modalWidth > window.innerWidth - 10) left = window.innerWidth - modalWidth - 10;
+  if (top + 120 > window.innerHeight) top = rect.top - 120;
+
+  modal.style.left = left + "px";
+  modal.style.top = top + "px";
+}
+
+async function sendEmoji(target, emoji) {
+  const now = Date.now();
+  if (now - emState.lastSentAt < SEND_COOLDOWN_MS) return;
+  if (!db || !emState.roomId || !emState.user) return;
+
+  emState.lastSentAt = now;
+
+  try {
+    await addDoc(collection(db, "rooms", emState.roomId, "emojis"), {
+      fromUid: emState.user.uid,
+      fromSeat: myPlayerSeat() ?? 0,
+      toUid: target.uid,
+      toSeat: target.seat,
+      emoji: emoji,
+      createdAt: Date.now()
+    });
+  } catch (error) {
+    console.error("Failed to send emoji:", error);
+  }
+}
+
 function resubscribe() {
-  if (emState.unsubRoom) {
-    emState.unsubRoom();
-    emState.unsubRoom = null;
-  }
-
-  if (emState.unsubEmojis) {
-    emState.unsubEmojis();
-    emState.unsubEmojis = null;
-  }
-
+  if (emState.unsubRoom) { emState.unsubRoom(); emState.unsubRoom = null; }
+  if (emState.unsubEmojis) { emState.unsubEmojis(); emState.unsubEmojis = null; }
   emState.room = null;
   emState.seen.clear();
 
@@ -465,13 +267,8 @@ function resubscribe() {
 
   emState.unsubRoom = onSnapshot(
     doc(db, "rooms", emState.roomId),
-    (snap) => {
-      emState.room = snap.exists() ? snap.data() : null;
-      if (emState.trayOpen && emState.pickedEmoji) renderTargets();
-    },
-    () => {
-      emState.room = null;
-    }
+    (snap) => { emState.room = snap.exists() ? snap.data() : null; },
+    () => { emState.room = null; }
   );
 
   emState.subscribeTs = Date.now();
@@ -486,11 +283,9 @@ function resubscribe() {
     q,
     (snap) => {
       const now = Date.now();
-
       snap.forEach((d) => {
         if (emState.seen.has(d.id)) return;
         emState.seen.add(d.id);
-
         if (emState.seen.size > 200) emState.seen.clear();
 
         const data = d.data();
@@ -502,7 +297,6 @@ function resubscribe() {
         }
 
         if (data.createdAt < emState.subscribeTs - 3000) return;
-
         playSplash(data);
       });
     },
@@ -510,55 +304,44 @@ function resubscribe() {
   );
 }
 
-async function sendEmoji(target) {
-  const now = Date.now();
-
-  if (now - emState.lastSentAt < SEND_COOLDOWN_MS) {
-    toast("Slow down! 😅");
-    return;
+// Event Delegation for Avatar Clicks
+document.addEventListener("click", (e) => {
+  const picker = document.getElementById("emoji-picker-modal");
+  if (picker && !picker.contains(e.target) && !e.target.closest(".avatar")) {
+    picker.remove();
   }
 
-  if (!db || !emState.roomId || !emState.user) return;
-
-  emState.lastSentAt = now;
-
-  try {
-    await addDoc(collection(db, "rooms", emState.roomId, "emojis"), {
-      fromUid: emState.user.uid,
-      fromName: myDisplayName(),
-      fromSeat: myPlayerSeat(), // Pass seat index directly
-      toUid: target.uid,
-      toName: target.displayName || target.username,
-      toSeat: target.seat,       // Pass seat index directly
-      emoji: emState.pickedEmoji || "😀",
-      createdAt: Date.now()
-    });
-
-    emState.pickedEmoji = null;
-    emState.trayOpen = false;
-    renderTray();
-  } catch (error) {
-    console.error(error);
-    toast("Could not send emoji.");
+  const avatar = e.target.closest(".avatar");
+  if (avatar && roomVisible() && emState.user && emState.room) {
+    const seatEl = avatar.closest(".seat");
+    if (!seatEl) return;
+    
+    const mySeat = myPlayerSeat() ?? 0;
+    const seatId = seatEl.id; // "seat-top", "seat-bottom", etc.
+    const posIndex = SEAT_POS.indexOf(seatId.replace("seat-", ""));
+    
+    if (posIndex === -1) return;
+    
+    const targetSeat = (posIndex + mySeat) % 4;
+    const targetPlayer = emState.room.players.find(p => p.seat === targetSeat);
+    
+    if (targetPlayer) {
+      showEmojiPicker(targetPlayer, avatar);
+    }
   }
-}
+});
 
 watchAuth((user) => {
   emState.user = user;
   resubscribe();
-  refreshVisibility();
 });
 
 setInterval(() => {
   const rid = localStorage.getItem("currentRoomId") || null;
-
   if (rid !== emState.roomId) {
     emState.roomId = rid;
     resubscribe();
   }
-
-  refreshVisibility();
 }, 800);
 
 injectEmojiStyles();
-ensureUI();
