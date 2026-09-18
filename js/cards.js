@@ -5,10 +5,7 @@ const RANK_VALUES = Object.fromEntries(RANKS.map((rank, index) => [rank, index +
 const SUIT_VALUES = Object.fromEntries(SUITS.map((suit, index) => [suit, index]));
 
 const SUIT_SYMBOLS = {
-  C: "\u2663",
-  D: "\u2666",
-  H: "\u2665",
-  S: "\u2660"
+  C: "\u2663", D: "\u2666", H: "\u2665", S: "\u2660"
 };
 
 export function buildDeck() {
@@ -30,32 +27,14 @@ export function shuffle(input) {
   return deck;
 }
 
-export function rankOf(card) {
-  return card.slice(0, -1);
-}
-
-export function suitOf(card) {
-  return card.slice(-1);
-}
-
-export function rankValue(card) {
-  return RANK_VALUES[rankOf(card)] || 0;
-}
-
-export function suitValue(card) {
-  return SUIT_VALUES[suitOf(card)] || 0;
-}
+export function rankOf(card) { return card.slice(0, -1); }
+export function suitOf(card) { return card.slice(-1); }
+export function rankValue(card) { return RANK_VALUES[rankOf(card)] || 0; }
+export function suitValue(card) { return SUIT_VALUES[suitOf(card)] || 0; }
 
 export function sortCards(cards) {
-  return [...cards].sort((a, b) => {
-    return rankValue(b) - rankValue(a) || suitValue(b) - suitValue(a);
-  });
+  return [...cards].sort((a, b) => rankValue(b) - rankValue(a) || suitValue(b) - suitValue(a));
 }
 
-export function suitSymbol(suit) {
-  return SUIT_SYMBOLS[suit] || suit;
-}
-
-export function isRedSuit(suit) {
-  return suit === "D" || suit === "H";
-}
+export function suitSymbol(suit) { return SUIT_SYMBOLS[suit] || suit; }
+export function isRedSuit(suit) { return suit === "D" || suit === "H"; }
