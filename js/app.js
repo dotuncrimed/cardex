@@ -2926,13 +2926,7 @@ document.addEventListener("click", (e) => {
 });
 
 /* =========================================================
-   UI ENHANCEMENTS v2
-   1) Circular ⇅ Swap Mid/Back FAB placed BETWEEN the
-      Middle row and Back row in the Arrange (zoom) view.
-   2) "🚪 Exit Room" button added inside the Results overlay
-      and inside the Ready area (no more trapped players).
-   3) HUD (← back button) forced above every overlay so it
-      can never be covered again.
+   UI ENHANCEMENTS v3 (FIXED SPACING)
    ========================================================= */
 
 function injectExtraStyles() {
@@ -2942,46 +2936,45 @@ function injectExtraStyles() {
   style.id = "cardex-extra-styles";
 
   style.textContent = `
-    /* HUD always clickable above overlays / reveal / results */
     .hud { z-index: 30; }
 
-    /* Circular swap (reverse) button */
+    /* Circular swap button - Absolute positioned to NOT break flex gap */
     .swap-fab {
-      width: 54px;
-      height: 54px;
+      position: absolute;
+      right: 4%;
+      top: 62%; /* Places it visually exactly between Middle and Back */
+      transform: translateY(-50%);
+      width: 48px;
+      height: 48px;
       border-radius: 50%;
       border: 3px solid rgba(255, 255, 255, 0.9);
       background: linear-gradient(145deg, #ff4081, #c2185b);
       color: #ffffff;
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 900;
       line-height: 1;
       padding: 0;
-      margin: -4px 6% -4px auto;
-      align-self: flex-end;
+      margin: 0;
       display: flex;
       align-items: center;
       justify-content: center;
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
       cursor: pointer;
-      z-index: 6;
+      z-index: 25;
       transition: transform 0.12s ease;
     }
 
     .swap-fab:active {
-      transform: scale(0.9) rotate(180deg);
+      transform: translateY(-50%) scale(0.9) rotate(180deg);
     }
 
-    /* Exit room buttons inside overlays */
     .exit-room-btn {
       background: #ff5252;
       color: #ffffff;
       box-shadow: 0 3px 0 #b71c1c;
     }
 
-    .ready-area .pg-actions {
-      flex-wrap: wrap;
-    }
+    .ready-area .pg-actions { flex-wrap: wrap; }
   `;
 
   document.head.appendChild(style);
@@ -2991,21 +2984,16 @@ function setupSwapFab() {
   const swapBtn = document.getElementById("swap-mid-back-button");
   if (!swapBtn) return;
 
-  // Turn the old pill button into a circular reverse FAB
   swapBtn.className = "swap-fab";
   swapBtn.textContent = "⇅";
   swapBtn.title = "Swap Middle & Back";
-  swapBtn.setAttribute("aria-label", "Swap Middle and Back rows");
-
-  // Move it between the Middle row and the Back row
-  const middleRowCards = document.getElementById("row-middle");
-
-  if (middleRowCards) {
-    const middleRowWrap = middleRowCards.closest(".my-row");
-
-    if (middleRowWrap && middleRowWrap.parentNode) {
-      middleRowWrap.parentNode.insertBefore(swapBtn, middleRowWrap.nextSibling);
-    }
+  
+  // Move it to the zoom-rows container so it floats on the right 
+  // without breaking the flex gap between the rows
+  const zoomRows = document.querySelector(".zoom-rows");
+  if (zoomRows) {
+    zoomRows.style.position = "relative";
+    zoomRows.appendChild(swapBtn);
   }
 }
 
@@ -3016,23 +3004,18 @@ function addExitButton(container) {
   const btn = document.createElement("button");
   btn.className = "pg-btn exit-room-btn";
   btn.textContent = "🚪 Exit Room";
-
-  btn.addEventListener("click", async () => {
-    await exitToMenu();
-  });
-
+  btn.addEventListener("click", async () => { await exitToMenu(); });
   container.appendChild(btn);
 }
 
 function setupExitButtons() {
-  // Inside the full results overlay
   addExitButton(document.getElementById("results-section"));
-
-  // Inside the ready / round-end area
   const readyActions = document.querySelector("#ready-area .pg-actions");
   addExitButton(readyActions || document.getElementById("ready-area"));
 }
 
 injectExtraStyles();
-setupSwapFab();
-setupExitButtons();
+setTimeout(() => {
+  setupSwapFab();
+  setupExitButtons();
+}, 500);
