@@ -2924,3 +2924,115 @@ document.addEventListener("click", (e) => {
     if (panel) panel.classList.add("hidden");
   }
 });
+
+/* =========================================================
+   UI ENHANCEMENTS v2
+   1) Circular ⇅ Swap Mid/Back FAB placed BETWEEN the
+      Middle row and Back row in the Arrange (zoom) view.
+   2) "🚪 Exit Room" button added inside the Results overlay
+      and inside the Ready area (no more trapped players).
+   3) HUD (← back button) forced above every overlay so it
+      can never be covered again.
+   ========================================================= */
+
+function injectExtraStyles() {
+  if (document.getElementById("cardex-extra-styles")) return;
+
+  const style = document.createElement("style");
+  style.id = "cardex-extra-styles";
+
+  style.textContent = `
+    /* HUD always clickable above overlays / reveal / results */
+    .hud { z-index: 30; }
+
+    /* Circular swap (reverse) button */
+    .swap-fab {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      border: 3px solid rgba(255, 255, 255, 0.9);
+      background: linear-gradient(145deg, #ff4081, #c2185b);
+      color: #ffffff;
+      font-size: 24px;
+      font-weight: 900;
+      line-height: 1;
+      padding: 0;
+      margin: -4px 6% -4px auto;
+      align-self: flex-end;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+      cursor: pointer;
+      z-index: 6;
+      transition: transform 0.12s ease;
+    }
+
+    .swap-fab:active {
+      transform: scale(0.9) rotate(180deg);
+    }
+
+    /* Exit room buttons inside overlays */
+    .exit-room-btn {
+      background: #ff5252;
+      color: #ffffff;
+      box-shadow: 0 3px 0 #b71c1c;
+    }
+
+    .ready-area .pg-actions {
+      flex-wrap: wrap;
+    }
+  `;
+
+  document.head.appendChild(style);
+}
+
+function setupSwapFab() {
+  const swapBtn = document.getElementById("swap-mid-back-button");
+  if (!swapBtn) return;
+
+  // Turn the old pill button into a circular reverse FAB
+  swapBtn.className = "swap-fab";
+  swapBtn.textContent = "⇅";
+  swapBtn.title = "Swap Middle & Back";
+  swapBtn.setAttribute("aria-label", "Swap Middle and Back rows");
+
+  // Move it between the Middle row and the Back row
+  const middleRowCards = document.getElementById("row-middle");
+
+  if (middleRowCards) {
+    const middleRowWrap = middleRowCards.closest(".my-row");
+
+    if (middleRowWrap && middleRowWrap.parentNode) {
+      middleRowWrap.parentNode.insertBefore(swapBtn, middleRowWrap.nextSibling);
+    }
+  }
+}
+
+function addExitButton(container) {
+  if (!container) return;
+  if (container.querySelector(".exit-room-btn")) return;
+
+  const btn = document.createElement("button");
+  btn.className = "pg-btn exit-room-btn";
+  btn.textContent = "🚪 Exit Room";
+
+  btn.addEventListener("click", async () => {
+    await exitToMenu();
+  });
+
+  container.appendChild(btn);
+}
+
+function setupExitButtons() {
+  // Inside the full results overlay
+  addExitButton(document.getElementById("results-section"));
+
+  // Inside the ready / round-end area
+  const readyActions = document.querySelector("#ready-area .pg-actions");
+  addExitButton(readyActions || document.getElementById("ready-area"));
+}
+
+injectExtraStyles();
+setupSwapFab();
+setupExitButtons();
