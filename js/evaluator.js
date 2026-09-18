@@ -287,7 +287,7 @@ export function detectSpecial(hand) {
 
   // Tier 4: All Black/Red - all 13 cards same color
   // FIXED: Removed phantom spaces from "H", "D", "R", "B"
-  const colorSet = new Set(suits.map((s) => (s === "H" || s === "D" ? "R" : "B")));
+const colorSet = new Set(suits.map((s) => (s === "H" || s === "D" ? "R" : "B")));
   if (colorSet.size === 1) {
     return {
       id: "allcolor",
