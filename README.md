@@ -1,34 +1,33 @@
-# Chinese Poker Multiplayer MVP
+# CARDEX — Chinese Poker Multiplayer MVP
 
-This is a multiplayer Chinese Poker MVP.
+A multiplayer Chinese Poker (Pusoy) game with live tables, bots, cash system, and admin panel.
 
-Features:
+## Features
 
 - Username + PIN dummy Firebase login
-- Create room
+- Create room with custom settings
 - Join room with room code
-- Timer options
-- Auto-fill bots
+- Live table lobby with watch/join
+- Timer options (arrange + ready)
+- Auto-fill bots (Easy / Normal / Hard)
 - Ready button for next round
-- Cash system
-- Admin panel
-- Scoring results
+- Cash system with daily bonus
+- Send money between players
+- Transaction history
+- Admin panel (cash, display name, room settings)
+- Scoring results with reveal animation
+- Special hands (Dragon, All Red/Black, Three Straights, Three Flushes, Six Pairs)
+- Foul detection and penalty
+- Scoop bonus option
 - Winner sorted top to bottom
+- Stale room auto-cleanup (15 minutes)
 
 ## Important
 
-This MVP uses client-side logic.
+This MVP uses **client-side logic**.
 
-Do not use it for real money.
+**Do not use it for real money.**
 
-For real cash, move wallet, payout, admin, and bot logic into Firebase Cloud Functions.
+For real cash, move wallet, payout, admin, and bot logic into **Firebase Cloud Functions**.
 
-## Setup
-
-1. Create Firebase project.
-2. Enable Authentication > Email/Password.
-3. Create Firestore Database.
-4. Copy Firebase web app config.
-5. Paste into `/js/config.js`.
-6. Publish `/firestore.rules`.
-7. Deploy to GitHub Pages.
+## File Structure
