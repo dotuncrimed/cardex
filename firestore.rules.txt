@@ -3,8 +3,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ─── HELPERS ──────────────────────────────────────────────
-
     function signedIn() {
       return request.auth != null;
     }
@@ -14,25 +12,11 @@ service cloud.firestore {
         request.auth.token.email == username + '@chinesepoker.app';
     }
 
-    // ─── USERS ────────────────────────────────────────────────
-
     match /users/{username} {
-      // User can read their own doc
-      // Signed-in users can also read others (needed for cash display)
       allow read: if signedIn();
-
-      // Only the user themselves can create their doc
       allow create: if isSameUsername(username);
-
-      // MVP: Allow any signed-in user to update
-      // This is REQUIRED for multiplayer settlement
-      // In production, move settlement to Cloud Functions
       allow update: if signedIn();
-
-      // No one can delete users
       allow delete: if false;
-
-      // ─── TRANSACTIONS SUBCOLLECTION ──────────────────────
 
       match /transactions/{transactionId} {
         allow read: if signedIn();
@@ -42,24 +26,11 @@ service cloud.firestore {
       }
     }
 
-    // ─── ROOMS ────────────────────────────────────────────────
-
     match /rooms/{roomId} {
-      // Any signed-in user can read rooms (lobby, spectate)
       allow read: if signedIn();
-
-      // Any signed-in user can create a room
       allow create: if signedIn();
-
-      // Any signed-in user can update rooms
-      // (join, submit, ready, start, finish)
       allow update: if signedIn();
-
-      // Any signed-in user can delete rooms
-      // (host leaving, stale room sweep)
       allow delete: if signedIn();
-
-      // ─── HANDS SUBCOLLECTION ─────────────────────────────
 
       match /hands/{uid} {
         allow read: if signedIn();
@@ -67,9 +38,14 @@ service cloud.firestore {
         allow update: if signedIn();
         allow delete: if signedIn();
       }
-    }
 
-    // ─── ADMIN LOGS ───────────────────────────────────────────
+      match /emojis/{emojiId} {
+        allow read: if signedIn();
+        allow create: if signedIn();
+        allow update: if false;
+        allow delete: if signedIn();
+      }
+    }
 
     match /adminLogs/{logId} {
       allow read: if signedIn();
