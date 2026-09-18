@@ -1,4 +1,4 @@
-﻿import { db } from "./firebase.js";
+import { db } from "./firebase.js";
 import {
   doc,
   getDoc,
@@ -12,7 +12,8 @@ import {
   query,
   orderBy,
   limit,
-  runTransaction
+  runTransaction,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 import { buildDeck, shuffle, sortCards } from "./cards.js";
