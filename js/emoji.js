@@ -18,7 +18,18 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { watchAuth } from "./auth.js";
 
-const EMOJIS = ["🐟", "️", "", "💩", "👏", "🔥", "", "🍌", "💀", "🎉"];
+const EMOJIS = [
+  "\u{1F41F}",         // 🐟 fish
+  "\u{1F5D1}\u{FE0F}", // 🗑️ trash
+  "\u{1F921}",         // 🤡 clown
+  "\u{1F4A9}",         // 💩 poop
+  "\u{1F44F}",         // 👏 clap
+  "\u{1F525}",         // 🔥 fire
+  "\u{1F62D}",         // 😭 crying
+  "\u{1F34C}",         // 🍌 banana
+  "\u{1F480}",         // 💀 skull
+  "\u{1F389}"          // 🎉 party
+];
 const SEAT_POS = ["bottom", "left", "top", "right"];
 const SEND_COOLDOWN_MS = 1500;
 const PRUNE_AFTER_MS = 60000;
@@ -206,6 +217,7 @@ function showEmojiPicker(targetPlayer, anchorEl) {
   modal.id = "emoji-picker-modal";
 
   EMOJIS.forEach((emoji) => {
+    if (!emoji || !emoji.trim()) return; // never render empty tiles
     const btn = document.createElement("button");
     btn.className = "emoji-pick-btn";
     btn.textContent = emoji;
