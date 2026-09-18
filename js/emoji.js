@@ -1,7 +1,6 @@
 // js/emoji.js
 // Feature 2: In-game emoji splash (multiplayer-synced)
-// Throw emojis (fish, trash, etc.) at any player at the table.
-// Everyone in the room sees the emoji fly in and splash on the target seat.
+// FIXED: Button is now inside the table area, and targeting accurately hits all seats.
 
 import { db } from "./firebase.js";
 import {
@@ -45,8 +44,12 @@ function injectEmojiStyles() {
   style.id = "emoji-styles";
 
   style.textContent = `
+    /* Button is now ABSOLUTE inside .pg-table */
     #emoji-tray-toggle {
-      position: fixed; right: 14px; bottom: 132px; z-index: 26;
+      position: absolute; 
+      right: 16px; 
+      bottom: 80px; 
+      z-index: 26;
       width: 52px; height: 52px; border-radius: 50%;
       border: 3px solid rgba(255,255,255,.85);
       background: linear-gradient(145deg,#7c4dff,#536dfe);
@@ -57,8 +60,9 @@ function injectEmojiStyles() {
     }
     #emoji-tray-toggle:active { transform: scale(.92); }
 
+    /* Tray remains FIXED to body so it doesn't get clipped by table overflow */
     .emoji-tray, .emoji-targets {
-      position: fixed; right: 14px; bottom: 194px; z-index: 27;
+      position: fixed; right: 14px; bottom: 140px; z-index: 1250;
       width: 250px; max-height: 60vh; overflow: auto;
       background: rgba(7,24,15,.97);
       border: 1px solid rgba(255,255,255,.16);
@@ -103,7 +107,7 @@ function injectEmojiStyles() {
 
     #emoji-toast {
       position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
-      z-index: 60; background: rgba(0,0,0,.8); color: #fff;
+      z-index: 1300; background: rgba(0,0,0,.8); color: #fff;
       border-radius: 999px; padding: 8px 18px;
       font-weight: 700; font-size: 13px; display: none;
     }
@@ -175,6 +179,9 @@ function toast(message) {
 function ensureUI() {
   if (document.getElementById("emoji-tray-toggle")) return;
 
+  const table = document.querySelector(".pg-table");
+  if (!table) return;
+
   const toggle = document.createElement("button");
   toggle.id = "emoji-tray-toggle";
   toggle.textContent = "😂";
@@ -186,7 +193,8 @@ function ensureUI() {
     renderTray();
   });
 
-  document.body.appendChild(toggle);
+  // Append to table so it stays in the lower right of the table area
+  table.appendChild(toggle);
 
   const tray = document.createElement("div");
   tray.id = "emoji-tray";
@@ -377,24 +385,42 @@ function playSplash(ev) {
   const table = document.querySelector(".pg-table");
   if (!table) return;
 
-  const mySeat = myPlayerSeat();
-  const targetSeat = playerSeat(ev.toUid);
+  // Use seats directly from the event payload to guarantee accuracy
+  const mySeat = ev.fromSeat ?? myPlayerSeat();
+  const targetSeat = ev.toSeat ?? playerSeat(ev.toUid);
 
   let targetEl = null;
-
   if (targetSeat !== null && mySeat !== null) {
     targetEl = document.querySelector("#seat-" + SEAT_POS[seatOffset(targetSeat, mySeat)]);
-  }
-
-  if (targetEl && targetEl.offsetParent === null) {
-    targetEl = null;
   }
 
   const lR = table.getBoundingClientRect();
   const tR = targetEl ? targetEl.getBoundingClientRect() : null;
 
-  const tx = tR ? tR.left - lR.left + tR.width / 2 : lR.width / 2;
-  const ty = tR ? tR.top - lR.top + tR.height / 2 : lR.height / 2;
+  let tx, ty;
+
+  // If the element is hidden (display: none) or missing, fallback to CSS layout percentages
+  if (tR && tR.width > 0) {
+    tx = tR.left - lR.left + tR.width / 2;
+    ty = tR.top - lR.top + tR.height / 2;
+  } else {
+    if (targetSeat === 0) { // bottom
+      tx = lR.width / 2;
+      ty = lR.height - 60;
+    } else if (targetSeat === 1) { // left
+      tx = lR.width * 0.12;
+      ty = lR.height * 0.46;
+    } else if (targetSeat === 2) { // top
+      tx = lR.width / 2;
+      ty = lR.height * 0.08;
+    } else if (targetSeat === 3) { // right
+      tx = lR.width * 0.88;
+      ty = lR.height * 0.46;
+    } else {
+      tx = lR.width / 2;
+      ty = lR.height / 2;
+    }
+  }
 
   const sx = lR.width / 2;
   const sy = lR.height - 60;
@@ -410,7 +436,6 @@ function playSplash(ev) {
   table.appendChild(fly);
 
   let done = false;
-
   const land = () => {
     if (done) return;
     done = true;
@@ -471,13 +496,11 @@ function resubscribe() {
         const data = d.data();
         if (!data || !data.createdAt) return;
 
-        // Prune old events
         if (data.createdAt < now - PRUNE_AFTER_MS) {
           deleteDoc(d.ref).catch(() => {});
           return;
         }
 
-        // Only play fresh events (not replays on join)
         if (data.createdAt < emState.subscribeTs - 3000) return;
 
         playSplash(data);
@@ -503,8 +526,10 @@ async function sendEmoji(target) {
     await addDoc(collection(db, "rooms", emState.roomId, "emojis"), {
       fromUid: emState.user.uid,
       fromName: myDisplayName(),
+      fromSeat: myPlayerSeat(), // Pass seat index directly
       toUid: target.uid,
       toName: target.displayName || target.username,
+      toSeat: target.seat,       // Pass seat index directly
       emoji: emState.pickedEmoji || "😀",
       createdAt: Date.now()
     });
