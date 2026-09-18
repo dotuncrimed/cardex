@@ -1,11 +1,22 @@
-﻿import { compareArrangements, getRoyalty, isLegalArrangement, detectSpecial } from "./evaluator.js";
+import {
+  compareArrangements,
+  getRoyalty,
+  isLegalArrangement,
+  detectSpecial
+} from "./evaluator.js";
 
 function isFouled(handData) {
-  if (!handData || !handData.arrangement) return false;
+  if (!handData) return false;
+
+  // Special hands are never fouled
+  if (handData.special) return false;
+
+  if (!handData.arrangement) return false;
+
   if (handData.fouled) return true;
-  
-  // Double-check legality as backup
+
   const arr = handData.arrangement;
+
   if (
     !Array.isArray(arr.front) || arr.front.length !== 3 ||
     !Array.isArray(arr.middle) || arr.middle.length !== 5 ||
@@ -13,12 +24,16 @@ function isFouled(handData) {
   ) {
     return true;
   }
-  
+
   return !isLegalArrangement(arr);
 }
 
-export function calculateResults(room, handsMap) {export function calculateResults(room, handsMap) {
-  const players = room.players;
+export function calculateResults(room, handsMap) {
+  const players = room.players || [];
+  const settings = room.settings || {};
+
+  // If scoop bonus is enabled, scoop wins 9 points instead of 6
+  const scoopPoints = settings.scoopBonus ? 9 : 6;
 
   const matchWins = {};
   const rowWins = {};
@@ -49,22 +64,26 @@ export function calculateResults(room, handsMap) {export function calculateResul
     specials[p.uid] = spec;
 
     // IMPORTANT FIX:
-    // A special hand should never be marked as fouled just because
-    // its automatic 3/5/5 split does not follow normal legality.
+    // A special hand must never be marked as fouled
     fouledMap[p.uid] = spec ? false : isFouled(hd);
   });
 
+  // Calculate royalties only for normal non-fouled hands
   players.forEach((p) => {
     const hd = handsMap[p.uid];
 
-    const arr =
-      !fouledMap[p.uid] && !specials[p.uid] && hd
-        ? hd.arrangement
-        : null;
+    const canEarnRoyalty =
+      !fouledMap[p.uid] &&
+      !specials[p.uid] &&
+      hd &&
+      hd.arrangement;
 
-    royaltyTotal[p.uid] = arr ? getRoyalty(arr).total : 0;
+    royaltyTotal[p.uid] = canEarnRoyalty
+      ? getRoyalty(hd.arrangement).total
+      : 0;
   });
 
+  // Pairwise matchups
   for (let i = 0; i < players.length; i++) {
     for (let j = i + 1; j < players.length; j++) {
       const p1 = players[i];
@@ -77,11 +96,12 @@ export function calculateResults(room, handsMap) {export function calculateResul
 
       const f1 = fouledMap[p1.uid];
       const f2 = fouledMap[p2.uid];
-
       const sp1 = specials[p1.uid];
       const sp2 = specials[p2.uid];
 
-      // Special hand handling
+      // -----------------------------
+      // SPECIAL HAND MATCHUPS
+      // -----------------------------
       if (sp1 || sp2) {
         if (sp1 && sp2) {
           if (sp1.tier > sp2.tier) {
@@ -232,13 +252,15 @@ export function calculateResults(room, handsMap) {export function calculateResul
         continue;
       }
 
-      // Foul handling
+      // -----------------------------
+      // FOUL MATCHUPS
+      // -----------------------------
       if (f1 || f2) {
         if (f1 && !f2) {
           matchWins[p2.uid] += 1;
           scoopCount[p2.uid] += 1;
-          matchupPoints[p2.uid] += 6;
-          matchupPoints[p1.uid] -= 6;
+          matchupPoints[p2.uid] += scoopPoints;
+          matchupPoints[p1.uid] -= scoopPoints;
 
           details[p1.uid].push({
             opponentUid: p2.uid,
@@ -247,7 +269,7 @@ export function calculateResults(room, handsMap) {export function calculateResul
             matchResult: "lose",
             foul: true,
             scoop: false,
-            points: -6,
+            points: -scoopPoints,
             royaltyEarned: 0,
             royaltyLost: royaltyTotal[p2.uid]
           });
@@ -259,15 +281,15 @@ export function calculateResults(room, handsMap) {export function calculateResul
             matchResult: "win",
             opponentFoul: true,
             scoop: true,
-            points: 6,
+            points: scoopPoints,
             royaltyEarned: royaltyTotal[p2.uid],
             royaltyLost: 0
           });
         } else if (f2 && !f1) {
           matchWins[p1.uid] += 1;
           scoopCount[p1.uid] += 1;
-          matchupPoints[p1.uid] += 6;
-          matchupPoints[p2.uid] -= 6;
+          matchupPoints[p1.uid] += scoopPoints;
+          matchupPoints[p2.uid] -= scoopPoints;
 
           details[p1.uid].push({
             opponentUid: p2.uid,
@@ -276,7 +298,7 @@ export function calculateResults(room, handsMap) {export function calculateResul
             matchResult: "win",
             opponentFoul: true,
             scoop: true,
-            points: 6,
+            points: scoopPoints,
             royaltyEarned: royaltyTotal[p1.uid],
             royaltyLost: 0
           });
@@ -288,7 +310,7 @@ export function calculateResults(room, handsMap) {export function calculateResul
             matchResult: "lose",
             foul: true,
             scoop: false,
-            points: -6,
+            points: -scoopPoints,
             royaltyEarned: 0,
             royaltyLost: royaltyTotal[p1.uid]
           });
@@ -321,7 +343,9 @@ export function calculateResults(room, handsMap) {export function calculateResul
         continue;
       }
 
-      // Normal arrangement comparison
+      // -----------------------------
+      // NORMAL MATCHUPS
+      // -----------------------------
       const comparison = compareArrangements(h1.arrangement, h2.arrangement);
 
       const sign = (v) => (v > 0 ? 1 : v < 0 ? -1 : 0);
@@ -351,11 +375,11 @@ export function calculateResults(room, handsMap) {export function calculateResul
       let pts2 = w2 - w1;
 
       if (scoop1) {
-        pts1 = 6;
-        pts2 = -6;
+        pts1 = scoopPoints;
+        pts2 = -scoopPoints;
       } else if (scoop2) {
-        pts2 = 6;
-        pts1 = -6;
+        pts2 = scoopPoints;
+        pts1 = -scoopPoints;
       }
 
       matchupPoints[p1.uid] += pts1;
@@ -363,16 +387,10 @@ export function calculateResults(room, handsMap) {export function calculateResul
 
       if (w1 > w2) {
         matchWins[p1.uid] += 1;
-
-        if (scoop1) {
-          scoopCount[p1.uid] += 1;
-        }
+        if (scoop1) scoopCount[p1.uid] += 1;
       } else if (w2 > w1) {
         matchWins[p2.uid] += 1;
-
-        if (scoop2) {
-          scoopCount[p2.uid] += 1;
-        }
+        if (scoop2) scoopCount[p2.uid] += 1;
       }
 
       rowWins[p1.uid] += w1;
@@ -402,7 +420,10 @@ export function calculateResults(room, handsMap) {export function calculateResul
     }
   }
 
-  const numOpponents = players.length - 1;
+  // -----------------------------
+  // FINAL SCORE CALCULATION
+  // -----------------------------
+  const numOpponents = Math.max(0, players.length - 1);
 
   const rankings = players.map((player) => {
     const fouled = fouledMap[player.uid];
@@ -419,6 +440,7 @@ export function calculateResults(room, handsMap) {export function calculateResul
     players.forEach((opp) => {
       if (opp.uid === player.uid) return;
 
+      // Do not pay royalties to fouled or special hands
       if (fouledMap[opp.uid] || specials[opp.uid]) return;
 
       royaltyPaid += royaltyTotal[opp.uid];
@@ -428,17 +450,13 @@ export function calculateResults(room, handsMap) {export function calculateResul
       matchupPoints[player.uid] + royaltyIncome - royaltyPaid;
 
     // HARD INVARIANT:
-    // A fouled hand can never end positive.
+    // A fouled hand can never end positive
     if (fouled) {
       scorePoints = matchupPoints[player.uid] - royaltyPaid;
 
       if (scorePoints > 0) {
-        console.warn(
-          "Clamping impossible positive foul score:",
-          player.uid
-        );
-
-        scorePoints = -6 * numOpponents;
+        console.warn("Clamping impossible positive foul score:", player.uid);
+        scorePoints = -scoopPoints * numOpponents;
       }
     }
 
@@ -468,6 +486,7 @@ export function calculateResults(room, handsMap) {export function calculateResul
     (a, b) =>
       b.scorePoints - a.scorePoints ||
       b.matchWins - a.matchWins ||
+      b.rowWins - a.rowWins ||
       a.displayName.localeCompare(b.displayName)
   );
 
@@ -495,9 +514,7 @@ export function calculateResults(room, handsMap) {export function calculateResul
 
   players.forEach((p) => {
     const hd = handsMap[p.uid];
-
-    arrangements[p.uid] =
-      hd && hd.arrangement ? hd.arrangement : null;
+    arrangements[p.uid] = hd && hd.arrangement ? hd.arrangement : null;
   });
 
   return {
@@ -512,4 +529,3 @@ export function calculateResults(room, handsMap) {export function calculateResul
     calculatedAt: Date.now()
   };
 }
-
