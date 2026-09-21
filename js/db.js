@@ -15,8 +15,12 @@ const STALE_MS = 3 * 60 * 1000;          // 3 minutes inactive -> kill table
 export const READY_FALLBACK_MS = 120000; // ready deadline fallback if ready timer is OFF
 const sweptRoomIds = new Set();
 
+/* ============ ECONOMY CONSTANTS ============ */
+export const DAILY_BOT_LIMIT = 10000000; // 10M max win from bots per day
+
 function roomRef(roomId) { return doc(db, "rooms", roomId); }
 function handRef(roomId, uid) { return doc(db, "rooms", roomId, "hands", uid); }
+function housePotRef() { return doc(db, "meta", "housePot"); }
 
 function generateRoomCode(length = 5) {
   let code = "";
@@ -69,6 +73,18 @@ export function listenUser(username, callback) {
   return onSnapshot(doc(db, "users", username), (snapshot) => {
     callback(snapshot.exists() ? snapshot.data() : null);
   });
+}
+
+/* ============ HOUSE POT ============ */
+export function listenHousePot(callback) {
+  return onSnapshot(housePotRef(), (snap) => {
+    callback(snap.exists() ? (Number(snap.data().amount) || 0) : 0);
+  });
+}
+
+export async function getHousePot() {
+  const snap = await getDoc(housePotRef());
+  return snap.exists() ? (Number(snap.data().amount) || 0) : 0;
 }
 
 /* ============ ROOM CREATION / LOOKUP ============ */
@@ -126,7 +142,6 @@ export async function joinRoomByCode(user, code, displayName) {
   code = String(code || "").trim().toUpperCase();
   const room = await getRoom(code);
   if (!room) throw new Error("Room not found.");
-
   const alreadyPlayer = room.players.some((p) => p.uid === user.uid);
   const alreadySpectator = room.spectators.some((s) => s.uid === user.uid);
   if (alreadyPlayer || alreadySpectator) return code;
@@ -194,7 +209,6 @@ export async function takeSeat(user, roomId, displayName) {
 export async function leaveRoom(user, roomId) {
   const room = await getRoom(roomId);
   if (!room) return;
-
   const leavingPlayer = room.players.find((p) => p.uid === user.uid);
   let players = room.players.filter((p) => p.uid !== user.uid);
   let spectators = room.spectators.filter((s) => s.uid !== user.uid);
@@ -262,19 +276,15 @@ export async function deleteRoomFully(roomId, players = []) {
   }
 }
 
-/* Kick every human who is not ready (host included).
-   Returns { kicked, empty } — empty=true means no real players remain. */
 export async function enforceReadyDeadline(roomId) {
   const room = await getRoom(roomId);
   if (!room || room.status !== "round_end") return null;
-
   const humans = room.players.filter((p) => !p.isBot);
   const unready = humans.filter((p) => !p.ready);
   if (unready.length === 0) return { kicked: [], empty: false };
 
   const kickedIds = new Set(unready.map((p) => p.uid));
   let players = room.players.filter((p) => !kickedIds.has(p.uid));
-
   const spectators = [
     ...room.spectators,
     ...unready.map((p) => ({
@@ -295,7 +305,6 @@ export async function enforceReadyDeadline(roomId) {
 
   players = ensureBots(players, room.settings.botLevel);
   players.sort((a, b) => a.seat - b.seat);
-
   await updateDoc(roomRef(roomId), { players, spectators, hostId, updatedAt: Date.now() });
   return { kicked: unready, empty: false };
 }
@@ -352,9 +361,11 @@ async function updatePlayerField(roomId, uid, field, value) {
 }
 
 export async function submitArrangement(roomId, uid, arrangement, isFouled = false) {
-  await setDoc(handRef(roomId, uid), {
-    arrangement, fouled: isFouled, submitted: true, updatedAt: Date.now()
-  }, { merge: true });
+  await setDoc(
+    handRef(roomId, uid),
+    { arrangement, fouled: isFouled, submitted: true, updatedAt: Date.now() },
+    { merge: true }
+  );
   await updatePlayerField(roomId, uid, "submitted", true);
 }
 
@@ -365,9 +376,11 @@ export async function declareSpecial(roomId, uid, hand) {
   const arrangement = {
     front: sorted.slice(0, 3), middle: sorted.slice(3, 8), back: sorted.slice(8, 13)
   };
-  await setDoc(handRef(roomId, uid), {
-    arrangement, special: spec, fouled: false, submitted: true, updatedAt: Date.now()
-  }, { merge: true });
+  await setDoc(
+    handRef(roomId, uid),
+    { arrangement, special: spec, fouled: false, submitted: true, updatedAt: Date.now() },
+    { merge: true }
+  );
   await updatePlayerField(roomId, uid, "submitted", true);
   return spec;
 }
@@ -385,7 +398,6 @@ export async function startRound(roomId, user) {
   let players = room.players.map((player) => ({
     ...player, submitted: false, ready: Boolean(player.isBot)
   }));
-
   if (room.settings.autoFillBots !== false) {
     players = ensureBots(players, room.settings.botLevel);
   }
@@ -444,17 +456,14 @@ export async function replaceUnreadyWithBots(roomId) {
   if (!room) return;
   let players = [...room.players];
   let hostId = room.hostId;
-
   const hostPlayer = players.find((p) => p.uid === hostId);
   if (hostPlayer && !hostPlayer.isBot && !hostPlayer.ready) {
     const successor = players.find((p) => !p.isBot && p.ready && p.uid !== hostId);
     if (successor) hostId = successor.uid;
     else return;
   }
-
   players = players.filter((p) => p.isBot || p.ready);
   if (!players.some((p) => !p.isBot)) return;
-
   players = ensureBots(players, room.settings.botLevel);
   players.sort((a, b) => a.seat - b.seat);
   await updateDoc(roomRef(roomId), { players, hostId, updatedAt: Date.now() });
@@ -540,19 +549,68 @@ export async function finishRound(roomId, user) {
     const alreadySettled = fresh && fresh.settledRound === results.roundNumber;
 
     if (!alreadySettled) {
+      const today = new Date().toISOString().slice(0, 10);
+      let housePotDelta = 0;
+
       for (const ranking of results.rankings) {
         if (ranking.isBot) continue;
-        const delta = Number(ranking.netCoins) || 0;
-        if (ranking.fouled && delta > 0) {
+
+        if (ranking.fouled && ranking.netCoins > 0) {
           console.error("BLOCKED positive settlement for fouled player:", ranking.uid);
           continue;
         }
-        if (delta !== 0) {
-          await adjustCash(ranking.username, delta, "game_settle",
+
+        const netCoins = Number(ranking.netCoins) || 0;
+        const botDeltaOrig = Number(ranking.botNetCoins) || 0;
+        let botDelta = botDeltaOrig;
+
+        // 1) Everything a human LOSES to bots flows into the House Pot
+        if (botDeltaOrig < 0) {
+          housePotDelta += Math.abs(botDeltaOrig);
+        }
+
+        // 2) Wins FROM bots are capped at 10M per day; the capped excess stays in the pot
+        if (botDeltaOrig > 0) {
+          const userData = await getUserData(ranking.username);
+          let currentBotWins = 0;
+          if (userData && userData.lastBotWinDate === today) {
+            currentBotWins = Number(userData.dailyBotWinnings) || 0;
+          }
+          const allowed = Math.max(0, DAILY_BOT_LIMIT - currentBotWins);
+          const actualBotWin = Math.min(botDeltaOrig, allowed);
+
+          if (actualBotWin < botDeltaOrig) {
+            housePotDelta += (botDeltaOrig - actualBotWin);
+          }
+          botDelta = actualBotWin;
+
+          if (actualBotWin > 0) {
+            await updateDoc(doc(db, "users", ranking.username), {
+              dailyBotWinnings: increment(actualBotWin),
+              lastBotWinDate: today
+            });
+          }
+        }
+
+        // netCoins already includes royalties + full bot delta;
+        // swap the uncapped bot delta for the capped one
+        const finalDelta = netCoins - botDeltaOrig + botDelta;
+
+        if (finalDelta !== 0) {
+          await adjustCash(ranking.username, finalDelta, "game_settle",
             `Room ${roomId} round ${results.roundNumber}`, user.username);
         }
+
         await updateUserStats(ranking.username, ranking.scorePoints,
           ranking.overallRank === 1 && ranking.scorePoints > 0);
+      }
+
+      // 3) Push the round's losses into the House Pot document
+      if (housePotDelta !== 0) {
+        await setDoc(housePotRef(), {
+          amount: increment(housePotDelta),
+          updatedAt: Date.now()
+        }, { merge: true });
       }
     }
 
@@ -595,16 +653,11 @@ export function listenAllRooms(callback) {
   });
 }
 
-export function listenHousePot(callback) {
-return onSnapshot(doc(db, "meta", "housePot"), (snap) => {
-callback(snap.exists() ? (snap.data().amount || 0) : 0);
-});
-}
 export function listenUserTransactions(username, callback) {
   const q = query(collection(db, "users", username, "transactions"), orderBy("createdAt", "desc"), limit(30));
   return onSnapshot(q, (snapshot) => {
     const txs = [];
-    snapshot.forEach((docSnap) => txs.push({ id: docSnap.id, ...docSnap.data() }));
+    snapshot.forEach((docSnap) => { txs.push({ id: docSnap.id, ...docSnap.data() }); });
     callback(txs);
   });
 }
@@ -620,92 +673,11 @@ export async function spectateRoom(user, code, displayName) {
   return code;
 }
 
-/* ============ TABLE LIFECYCLE SWEEP ============
-   Kills a table when:
-   - no real (human) players remain, OR
-   - no activity (updatedAt / lastHeartbeat) for 3 minutes.
-   Connected clients keep tables alive via heartbeatRoom(). */
+/* ============ TABLE LIFECYCLE SWEEP ============ */
 export async function sweepStaleRooms(rooms, excludeUid) {
   const now = Date.now();
-
   for (const room of rooms) {
     const roomId = room.id || room.roomCode;
     if (!roomId || sweptRoomIds.has(roomId)) continue;
-
     const humans = (room.players || []).filter((p) => !p.isBot);
-    const lastActivity = Math.max(room.lastHeartbeat || 0, room.updatedAt || 0, room.createdAt || 0);
-    const inactive = now - lastActivity > STALE_MS;
-    const noHumans = humans.length === 0;
-
-    if (!inactive && !noHumans) continue;
-
-    // never sweep a room the sweeping user is inside
-    if (excludeUid) {
-      const inPlayers = (room.players || []).some((p) => p.uid === excludeUid);
-      const inSpectators = (room.spectators || []).some((s) => s.uid === excludeUid);
-      if (inPlayers || inSpectators) continue;
-    }
-
-    sweptRoomIds.add(roomId);
-    await deleteRoomFully(roomId, room.players || []);
-    console.log("Swept dead table:", room.roomCode, noHumans ? "(no real players)" : "(3min inactive)");
-  }
-}
-
-/* ============ ECONOMY ============ */
-export const DAILY_BONUS = 10000;
-
-function todayKey() { return new Date().toISOString().slice(0, 10); }
-
-export async function claimDailyBonus(username) {
-  const userRef = doc(db, "users", username);
-  const today = todayKey();
-  return runTransaction(db, async (tx) => {
-    const snap = await tx.get(userRef);
-    if (!snap.exists()) throw new Error("User not found.");
-    const data = snap.data();
-    if (data.lastClaimDate === today) throw new Error("Already claimed today. Come back tomorrow!");
-    const currentCash = Number(data.cash) || 0;
-    const newCash = currentCash + DAILY_BONUS;
-    tx.update(userRef, { cash: newCash, lastClaimDate: today, updatedAt: Date.now() });
-    tx.set(doc(db, "users", username, "transactions", today + "_daily"), {
-      type: "daily_bonus", amount: DAILY_BONUS, balanceAfter: newCash,
-      note: "Daily login bonus", admin: null, createdAt: Date.now()
-    });
-    return newCash;
-  });
-}
-
-export async function transferCash(fromUsername, toUsername, amount, note) {
-  amount = Math.floor(Number(amount));
-  if (!amount || amount <= 0) throw new Error("Enter a positive amount.");
-  if (fromUsername === toUsername) throw new Error("Cannot send to yourself.");
-
-  const fromRef = doc(db, "users", fromUsername);
-  const toRef = doc(db, "users", toUsername);
-
-  return runTransaction(db, async (tx) => {
-    const fromSnap = await tx.get(fromRef);
-    const toSnap = await tx.get(toRef);
-    if (!fromSnap.exists()) throw new Error("Sender not found.");
-    if (!toSnap.exists()) throw new Error("Recipient not found.");
-    const fromCash = Number(fromSnap.data().cash) || 0;
-    if (fromCash < amount) throw new Error("Not enough cash.");
-
-    const newFrom = fromCash - amount;
-    const newTo = (Number(toSnap.data().cash) || 0) + amount;
-
-    tx.update(fromRef, { cash: newFrom, updatedAt: Date.now() });
-    tx.update(toRef, { cash: newTo, updatedAt: Date.now() });
-
-    const ts = Date.now();
-    tx.set(doc(db, "users", fromUsername, "transactions", "out_" + ts), {
-      type: "transfer_out", amount: -amount, balanceAfter: newFrom, note: note || "", to: toUsername, createdAt: ts
-    });
-    tx.set(doc(db, "users", toUsername, "transactions", "in_" + ts), {
-      type: "transfer_in", amount: amount, balanceAfter: newTo, note: note || "", from: fromUsername, createdAt: ts
-    });
-    return newFrom;
-  });
-}
-
+   
