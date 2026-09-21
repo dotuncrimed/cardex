@@ -25,7 +25,7 @@ export async function getHousePot() {
   const snap = await getDoc(housePotRef());
   return snap.exists() ? (Number(snap.data().amount) || 0) : 0;
 }
-function housePotRef() { return doc(db, "meta", "housePot"); }
+
 
 function generateRoomCode(length = 5) {
   let code = "";
