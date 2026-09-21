@@ -562,11 +562,14 @@ export async function finishRound(roomId, user) {
 
         const netCoins = Number(ranking.netCoins) || 0;
         const botDeltaOrig = Number(ranking.botNetCoins) || 0;
-        let botDelta = botDeltaOrig;
+        
+        let finalDelta = netCoins; // Start with total calculated winnings/losses
+        let potAddition = 0;
 
-        // 1) Everything a human LOSES to bots flows into the House Pot
+        // 1) Human losses to bots flow into the House Pot
         if (botDeltaOrig < 0) {
-          housePotDelta += Math.abs(botDeltaOrig);
+          potAddition += Math.abs(botDeltaOrig);
+          // finalDelta remains negative, so the player's wallet is correctly deducted
         }
 
         // 2) Wins FROM bots are capped at 10M per day; the capped excess stays in the pot
@@ -580,9 +583,11 @@ export async function finishRound(roomId, user) {
           const actualBotWin = Math.min(botDeltaOrig, allowed);
 
           if (actualBotWin < botDeltaOrig) {
-            housePotDelta += (botDeltaOrig - actualBotWin);
+            potAddition += (botDeltaOrig - actualBotWin);
           }
-          botDelta = actualBotWin;
+          
+          // Adjust finalDelta to only include the allowed bot win
+          finalDelta = netCoins - botDeltaOrig + actualBotWin;
 
           if (actualBotWin > 0) {
             await updateDoc(doc(db, "users", ranking.username), {
@@ -592,13 +597,16 @@ export async function finishRound(roomId, user) {
           }
         }
 
-        // netCoins already includes royalties + full bot delta;
-        // swap the uncapped bot delta for the capped one
-        const finalDelta = netCoins - botDeltaOrig + botDelta;
+        // DEBUG LOG: Watch this in your browser console to verify the math!
+        console.log(`[SETTLE] ${ranking.username}: net=${netCoins}, botOrig=${botDeltaOrig}, finalDelta=${finalDelta}, potAdd=${potAddition}`);
 
         if (finalDelta !== 0) {
           await adjustCash(ranking.username, finalDelta, "game_settle",
             `Room ${roomId} round ${results.roundNumber}`, user.username);
+        }
+
+        if (potAddition > 0) {
+            housePotDelta += potAddition;
         }
 
         await updateUserStats(ranking.username, ranking.scorePoints,
