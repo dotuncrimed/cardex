@@ -595,6 +595,11 @@ export function listenAllRooms(callback) {
   });
 }
 
+export function listenHousePot(callback) {
+return onSnapshot(doc(db, "meta", "housePot"), (snap) => {
+callback(snap.exists() ? (snap.data().amount || 0) : 0);
+});
+}
 export function listenUserTransactions(username, callback) {
   const q = query(collection(db, "users", username, "transactions"), orderBy("createdAt", "desc"), limit(30));
   return onSnapshot(q, (snapshot) => {
@@ -703,3 +708,4 @@ export async function transferCash(fromUsername, toUsername, amount, note) {
     return newFrom;
   });
 }
+
