@@ -11,8 +11,8 @@ import { detectSpecial } from "./evaluator.js";
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 /* ============ LIFECYCLE & ECONOMY CONSTANTS ============ */
-const STALE_MS = 3 * 60 * 1000;          // 3 minutes inactive -> kill table
-export const READY_FALLBACK_MS = 120000; // ready deadline fallback
+const STALE_MS = 3 * 60 * 1000;          
+export const READY_FALLBACK_MS = 120000; 
 export const DAILY_BOT_LIMIT = 10000000; // 10M max win from bots per day
 const sweptRoomIds = new Set();
 
@@ -258,9 +258,7 @@ export async function updateRoomSettings(roomId, settings) {
 export async function heartbeatRoom(roomId) {
   try {
     await updateDoc(roomRef(roomId), { lastHeartbeat: Date.now() });
-  } catch (error) {
-    // room may already be gone
-  }
+  } catch (error) {}
 }
 
 export async function deleteRoomFully(roomId, players = []) {
@@ -556,15 +554,16 @@ export async function finishRound(roomId, user) {
       const playerMap = {};
       room.players.forEach(p => { playerMap[p.uid] = p; });
 
-      // 🏦 HOUSE BANK LOGIC
+      console.log("🔥 [SETTLEMENT START] Fetching House Pot...");
       let currentPot = await getHousePot(); 
+      console.log(`🏦 Current House Pot Balance: ${currentPot}`);
       let potNetChange = 0; 
 
       for (const ranking of results.rankings) {
         if (ranking.isBot) continue;
 
         if (ranking.fouled && ranking.netCoins > 0) {
-          console.error("BLOCKED positive settlement for fouled player:", ranking.uid);
+          console.error("🚫 BLOCKED positive settlement for fouled player:", ranking.uid);
           continue;
         }
 
@@ -575,20 +574,27 @@ export async function finishRound(roomId, user) {
         myDetails.forEach(d => {
           const opp = playerMap[d.opponentUid];
           if (!opp) return;
-          const coins = d.points * minBet;
-          if (opp.isBot) botDelta += coins;
-          else humanDelta += coins;
+          
+          const matchCoins = (d.points || 0) * minBet;
+          const myRoyalty = (d.royaltyEarned || 0) * minBet;
+          const theirRoyalty = (d.royaltyLost || 0) * minBet; 
+          
+          const netVsOpp = matchCoins + myRoyalty - theirRoyalty;
+          
+          if (opp.isBot) botDelta += netVsOpp;
+          else humanDelta += netVsOpp;
         });
+
+        console.log(`👤 Player: ${ranking.username} | HumanDelta: ${humanDelta} | BotDelta: ${botDelta}`);
 
         let walletChange = humanDelta; 
 
-        // 📉 LOSSES TO BOTS (Feeds the House Pot)
         if (botDelta < 0) {
           walletChange += botDelta; 
           potNetChange += Math.abs(botDelta); 
           currentPot += Math.abs(botDelta); 
+          console.log(`📉 ${ranking.username} lost ${Math.abs(botDelta)} to bots. Pot grows.`);
         } 
-        // 📈 WINS FROM BOTS (Paid OUT of the House Pot)
         else if (botDelta > 0) {
           const userData = await getUserData(ranking.username);
           let currentBotWins = 0;
@@ -596,16 +602,15 @@ export async function finishRound(roomId, user) {
             currentBotWins = Number(userData.dailyBotWinnings) || 0;
           }
           
-          // 1. Enforce 10M Daily Cap
           const allowedByCap = Math.max(0, DAILY_BOT_LIMIT - currentBotWins);
           const cappedWin = Math.min(botDelta, allowedByCap);
-          
-          // 2. Enforce Pot Bankruptcy Rule
           const actualPayout = Math.min(cappedWin, currentPot);
           
           walletChange += actualPayout;
           potNetChange -= actualPayout;
           currentPot -= actualPayout; 
+          
+          console.log(`📈 ${ranking.username} won ${botDelta} from bots. Cap allowed: ${allowedByCap}. Pot has: ${currentPot + actualPayout}. Actual Payout: ${actualPayout}`);
           
           if (actualPayout > 0) {
             await updateDoc(doc(db, "users", ranking.username), {
@@ -614,6 +619,8 @@ export async function finishRound(roomId, user) {
             });
           }
         }
+
+        console.log(`💰 Final Wallet Change for ${ranking.username}: ${walletChange}`);
 
         if (walletChange !== 0) {
           await adjustCash(ranking.username, walletChange, "game_settle",
@@ -624,6 +631,7 @@ export async function finishRound(roomId, user) {
           ranking.overallRank === 1 && ranking.scorePoints > 0);
       }
 
+      console.log(`💾 Saving final House Pot change: ${potNetChange}`);
       if (potNetChange !== 0) {
         await setDoc(housePotRef(), {
           amount: increment(potNetChange),
