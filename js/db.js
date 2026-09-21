@@ -10,18 +10,16 @@ import { detectSpecial } from "./evaluator.js";
 
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-/* ============ LIFECYCLE & ECONOMY CONSTANTS ============ */
-const STALE_MS = 3 * 60 * 1000;          
-export const READY_FALLBACK_MS = 120000; 
-export const DAILY_BOT_LIMIT = 10000000; // 10M max win from bots per day
+/* ============ LIFECYCLE CONSTANTS ============ */
+const STALE_MS = 3 * 60 * 1000;          // 3 minutes inactive -> kill table
+export const READY_FALLBACK_MS = 120000; // ready deadline fallback if ready timer is OFF
+export const DAILY_BOT_LIMIT = 10000000; // 10M per day minted "from the air" per player
 const sweptRoomIds = new Set();
 
-/* ============ FIRESTORE REFS ============ */
 function roomRef(roomId) { return doc(db, "rooms", roomId); }
 function handRef(roomId, uid) { return doc(db, "rooms", roomId, "hands", uid); }
 function housePotRef() { return doc(db, "meta", "housePot"); }
 
-/* ============ HELPERS ============ */
 function generateRoomCode(length = 5) {
   let code = "";
   for (let i = 0; i < length; i++) {
@@ -258,7 +256,9 @@ export async function updateRoomSettings(roomId, settings) {
 export async function heartbeatRoom(roomId) {
   try {
     await updateDoc(roomRef(roomId), { lastHeartbeat: Date.now() });
-  } catch (error) {}
+  } catch (error) {
+    // room may already be gone
+  }
 }
 
 export async function deleteRoomFully(roomId, players = []) {
@@ -359,11 +359,9 @@ async function updatePlayerField(roomId, uid, field, value) {
 }
 
 export async function submitArrangement(roomId, uid, arrangement, isFouled = false) {
-  await setDoc(
-    handRef(roomId, uid),
-    { arrangement, fouled: isFouled, submitted: true, updatedAt: Date.now() },
-    { merge: true }
-  );
+  await setDoc(handRef(roomId, uid), {
+    arrangement, fouled: isFouled, submitted: true, updatedAt: Date.now()
+  }, { merge: true });
   await updatePlayerField(roomId, uid, "submitted", true);
 }
 
@@ -374,11 +372,9 @@ export async function declareSpecial(roomId, uid, hand) {
   const arrangement = {
     front: sorted.slice(0, 3), middle: sorted.slice(3, 8), back: sorted.slice(8, 13)
   };
-  await setDoc(
-    handRef(roomId, uid),
-    { arrangement, special: spec, fouled: false, submitted: true, updatedAt: Date.now() },
-    { merge: true }
-  );
+  await setDoc(handRef(roomId, uid), {
+    arrangement, special: spec, fouled: false, submitted: true, updatedAt: Date.now()
+  }, { merge: true });
   await updatePlayerField(roomId, uid, "submitted", true);
   return spec;
 }
@@ -485,7 +481,6 @@ async function updateUserStats(username, points, isWinner) {
   });
 }
 
-/* ============ HOUSE BANK SETTLEMENT LOGIC ============ */
 export async function finishRound(roomId, user) {
   const room = await getRoom(roomId);
   if (!room) return;
@@ -550,77 +545,78 @@ export async function finishRound(roomId, user) {
     if (!alreadySettled) {
       const today = new Date().toISOString().slice(0, 10);
       const minBet = Number(room.settings.minBet) || 0;
-      
-      const playerMap = {};
-      room.players.forEach(p => { playerMap[p.uid] = p; });
 
-      console.log("🔥 [SETTLEMENT START] Fetching House Pot...");
-      let currentPot = await getHousePot(); 
-      console.log(`🏦 Current House Pot Balance: ${currentPot}`);
-      let potNetChange = 0; 
+      const playerMap = {};
+      room.players.forEach((p) => { playerMap[p.uid] = p; });
+
+      // House-Bank economy: track the pot in memory while we settle each player
+      let currentPot = await getHousePot();
+      let housePotDelta = 0;
 
       for (const ranking of results.rankings) {
         if (ranking.isBot) continue;
 
-        if (ranking.fouled && ranking.netCoins > 0) {
-          console.error("🚫 BLOCKED positive settlement for fouled player:", ranking.uid);
+        const netCoins = Number(ranking.netCoins) || 0;
+
+        // Split the net result into the bot-funded part and the human-funded part
+        let botDelta = 0;
+        const myDetails = results.details[ranking.uid] || [];
+        myDetails.forEach((d) => {
+          const opp = playerMap[d.opponentUid];
+          if (!opp) return;
+          const netVsOpp =
+            ((d.points || 0) + (d.royaltyEarned || 0) - (d.royaltyLost || 0)) * minBet;
+          if (opp.isBot) botDelta += netVsOpp;
+        });
+        const humanDelta = netCoins - botDelta;
+
+        if (ranking.fouled && netCoins > 0) {
+          console.error("BLOCKED positive settlement for fouled player:", ranking.uid);
           continue;
         }
 
-        let humanDelta = 0;
-        let botDelta = 0;
-        const myDetails = results.details[ranking.uid] || [];
-        
-        myDetails.forEach(d => {
-          const opp = playerMap[d.opponentUid];
-          if (!opp) return;
-          
-          const matchCoins = (d.points || 0) * minBet;
-          const myRoyalty = (d.royaltyEarned || 0) * minBet;
-          const theirRoyalty = (d.royaltyLost || 0) * minBet; 
-          
-          const netVsOpp = matchCoins + myRoyalty - theirRoyalty;
-          
-          if (opp.isBot) botDelta += netVsOpp;
-          else humanDelta += netVsOpp;
-        });
-
-        console.log(`👤 Player: ${ranking.username} | HumanDelta: ${humanDelta} | BotDelta: ${botDelta}`);
-
-        let walletChange = humanDelta; 
+        // Human-vs-human coins move wallet-to-wallet; pot untouched
+        let walletChange = humanDelta;
+        let potDelta = 0;
 
         if (botDelta < 0) {
-          walletChange += botDelta; 
-          potNetChange += Math.abs(botDelta); 
-          currentPot += Math.abs(botDelta); 
-          console.log(`📉 ${ranking.username} lost ${Math.abs(botDelta)} to bots. Pot grows.`);
-        } 
-        else if (botDelta > 0) {
+          // LOSS to bots: coins leave the wallet and FILL the House Pot
+          walletChange += botDelta;
+          potDelta += Math.abs(botDelta);
+        } else if (botDelta > 0) {
+          // WIN vs bots:
+          // 1) Up to the remaining 10M daily cap is minted FROM THE AIR
+          // 2) Anything beyond the cap is paid OUT OF THE HOUSE POT
+          //    (until the pot is drained to 0 — then, and only then, no payout)
           const userData = await getUserData(ranking.username);
           let currentBotWins = 0;
           if (userData && userData.lastBotWinDate === today) {
             currentBotWins = Number(userData.dailyBotWinnings) || 0;
           }
-          
-          const allowedByCap = Math.max(0, DAILY_BOT_LIMIT - currentBotWins);
-          const cappedWin = Math.min(botDelta, allowedByCap);
-          const actualPayout = Math.min(cappedWin, currentPot);
-          
-          walletChange += actualPayout;
-          potNetChange -= actualPayout;
-          currentPot -= actualPayout; 
-          
-          console.log(`📈 ${ranking.username} won ${botDelta} from bots. Cap allowed: ${allowedByCap}. Pot has: ${currentPot + actualPayout}. Actual Payout: ${actualPayout}`);
-          
-          if (actualPayout > 0) {
+
+          const remainingCap = Math.max(0, DAILY_BOT_LIMIT - currentBotWins);
+          const airPortion = Math.min(botDelta, remainingCap);
+          const potPortion = botDelta - airPortion;
+          const potPayout = Math.min(potPortion, Math.max(0, currentPot));
+
+          walletChange += airPortion + potPayout;
+          potDelta -= potPayout;
+
+          if (airPortion > 0) {
             await updateDoc(doc(db, "users", ranking.username), {
-              dailyBotWinnings: increment(actualPayout),
+              dailyBotWinnings: increment(airPortion),
               lastBotWinDate: today
             });
           }
+
+          const unpaid = potPortion - potPayout;
+          if (unpaid > 0) {
+            console.warn(`House Pot dry: ${ranking.username} left unpaid ${unpaid}`);
+          }
         }
 
-        console.log(`💰 Final Wallet Change for ${ranking.username}: ${walletChange}`);
+        currentPot += potDelta;
+        housePotDelta += potDelta;
 
         if (walletChange !== 0) {
           await adjustCash(ranking.username, walletChange, "game_settle",
@@ -631,10 +627,9 @@ export async function finishRound(roomId, user) {
           ranking.overallRank === 1 && ranking.scorePoints > 0);
       }
 
-      console.log(`💾 Saving final House Pot change: ${potNetChange}`);
-      if (potNetChange !== 0) {
+      if (housePotDelta !== 0) {
         await setDoc(housePotRef(), {
-          amount: increment(potNetChange),
+          amount: increment(housePotDelta),
           updatedAt: Date.now()
         }, { merge: true });
       }
@@ -683,7 +678,7 @@ export function listenUserTransactions(username, callback) {
   const q = query(collection(db, "users", username, "transactions"), orderBy("createdAt", "desc"), limit(30));
   return onSnapshot(q, (snapshot) => {
     const txs = [];
-    snapshot.forEach((docSnap) => { txs.push({ id: docSnap.id, ...docSnap.data() }); });
+    snapshot.forEach((docSnap) => txs.push({ id: docSnap.id, ...docSnap.data() }));
     callback(txs);
   });
 }
