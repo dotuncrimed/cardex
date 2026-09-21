@@ -7,7 +7,7 @@ import {
 
 function isFouled(handData) {
   if (!handData) return false;
-  if (handData.special) return false; // special hands are never fouled
+  if (handData.special) return false;
   if (!handData.arrangement) return false;
   if (handData.fouled) return true;
   const arr = handData.arrangement;
@@ -35,8 +35,6 @@ export function calculateResults(room, handsMap) {
   const fouledMap = {};
   const details = {};
   const specials = {};
-  const botNetMap = {};
-  const humanNetMap = {};
 
   players.forEach((p) => {
     matchWins[p.uid] = 0;
@@ -45,8 +43,6 @@ export function calculateResults(room, handsMap) {
     scoopCount[p.uid] = 0;
     royaltyTotal[p.uid] = 0;
     details[p.uid] = [];
-    botNetMap[p.uid] = 0;
-    humanNetMap[p.uid] = 0;
 
     const hd = handsMap[p.uid];
     let spec = hd && hd.special ? hd.special : null;
@@ -157,18 +153,6 @@ export function calculateResults(room, handsMap) {
 
       matchupPoints[p1.uid] += pts1;
       matchupPoints[p2.uid] += pts2;
-
-      // ---- coin attribution: bots vs humans (feeds the House Pot) ----
-      const coins1 = pts1 * minBet;
-      const coins2 = pts2 * minBet;
-      if (!p1.isBot) {
-        if (p2.isBot) botNetMap[p1.uid] += coins1;
-        else humanNetMap[p1.uid] += coins1;
-      }
-      if (!p2.isBot) {
-        if (p1.isBot) botNetMap[p2.uid] += coins2;
-        else humanNetMap[p2.uid] += coins2;
-      }
     }
   }
 
@@ -199,6 +183,20 @@ export function calculateResults(room, handsMap) {
       }
     }
 
+    // SAFE BOT TRACKING: Calculate botNetCoins directly from the details array
+    let botNetCoins = 0;
+    let humanNetCoins = 0;
+    if (!player.isBot) {
+        const myDetails = details[player.uid] || [];
+        myDetails.forEach((d) => {
+            const opp = players.find(x => x.uid === d.opponentUid);
+            if (!opp) return;
+            const coins = d.points * minBet;
+            if (opp.isBot) botNetCoins += coins;
+            else humanNetCoins += coins;
+        });
+    }
+
     return {
       uid: player.uid,
       username: player.username,
@@ -214,8 +212,8 @@ export function calculateResults(room, handsMap) {
       prize: 0,
       net: 0,
       netCoins: 0,
-      botNetCoins: botNetMap[player.uid] || 0,
-      humanNetCoins: humanNetMap[player.uid] || 0,
+      botNetCoins: botNetCoins,
+      humanNetCoins: humanNetCoins,
       humanRank: null,
       overallRank: null,
       fouled,
