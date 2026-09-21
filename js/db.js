@@ -10,16 +10,18 @@ import { detectSpecial } from "./evaluator.js";
 
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-/* ============ LIFECYCLE CONSTANTS ============ */
-const STALE_MS = 3 * 60 * 1000;          // 3 minutes inactive -> kill table
-export const READY_FALLBACK_MS = 120000; // ready deadline fallback if ready timer is OFF
+/* ============ LIFECYCLE & ECONOMY CONSTANTS ============ */
+const STALE_MS = 3 * 60 * 1000;          
+export const READY_FALLBACK_MS = 120000; 
 export const DAILY_BOT_LIMIT = 10000000; // 10M per day minted "from the air" per player
 const sweptRoomIds = new Set();
 
+/* ============ FIRESTORE REFS ============ */
 function roomRef(roomId) { return doc(db, "rooms", roomId); }
 function handRef(roomId, uid) { return doc(db, "rooms", roomId, "hands", uid); }
 function housePotRef() { return doc(db, "meta", "housePot"); }
 
+/* ============ HELPERS ============ */
 function generateRoomCode(length = 5) {
   let code = "";
   for (let i = 0; i < length; i++) {
@@ -94,16 +96,9 @@ export async function createRoom(user, settings) {
     if (snap.exists()) continue;
 
     const room = {
-      roomCode: code,
-      hostId: user.uid,
-      status: "lobby",
-      roundNumber: 0,
-      pot: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      lastHeartbeat: Date.now(),
-      phaseEndsAt: null,
-      results: null,
+      roomCode: code, hostId: user.uid, status: "lobby", roundNumber: 0, pot: 0,
+      createdAt: Date.now(), updatedAt: Date.now(), lastHeartbeat: Date.now(),
+      phaseEndsAt: null, results: null,
       settings: {
         minBet: Number(settings.minBet) || 0,
         arrangeTimerSeconds: Number(settings.arrangeTimerSeconds) || 0,
@@ -113,8 +108,7 @@ export async function createRoom(user, settings) {
         scoopBonus: Boolean(settings.scoopBonus),
         autoArrange: Boolean(settings.autoArrange)
       },
-      players: [makeHumanSeat(user, 0)],
-      spectators: []
+      players: [makeHumanSeat(user, 0)], spectators: []
     };
     await setDoc(ref, room);
     return code;
@@ -140,9 +134,7 @@ export async function joinRoomByCode(user, code, displayName) {
   code = String(code || "").trim().toUpperCase();
   const room = await getRoom(code);
   if (!room) throw new Error("Room not found.");
-  const alreadyPlayer = room.players.some((p) => p.uid === user.uid);
-  const alreadySpectator = room.spectators.some((s) => s.uid === user.uid);
-  if (alreadyPlayer || alreadySpectator) return code;
+  if (room.players.some((p) => p.uid === user.uid) || room.spectators.some((s) => s.uid === user.uid)) return code;
 
   if (["arranging", "scoring"].includes(room.status)) {
     const spectators = [...room.spectators, { uid: user.uid, username: user.username, displayName, joinedAt: Date.now() }];
@@ -179,13 +171,11 @@ export async function takeSeat(user, roomId, displayName) {
   const room = await getRoom(roomId);
   if (!room) return;
   if (room.players.some((p) => p.uid === user.uid)) return;
-  if (!["lobby", "round_end"].includes(room.status)) {
-    throw new Error("You can only take a seat between rounds.");
-  }
+  if (!["lobby", "round_end"].includes(room.status)) throw new Error("You can only take a seat between rounds.");
+  
   const minBet = Number(room.settings.minBet) || 0;
   const me = await getUserData(user.username);
-  const hasMoney = Boolean(me) && Number(me.cash) >= minBet;
-  if (!hasMoney) throw new Error("Not enough cash to take a seat.");
+  if (!me || Number(me.cash) < minBet) throw new Error("Not enough cash to take a seat.");
 
   let players = [...room.players];
   const spectators = room.spectators.filter((s) => s.uid !== user.uid);
@@ -215,10 +205,7 @@ export async function leaveRoom(user, roomId) {
 
   if (hostId === user.uid) {
     const nextHost = players.find((p) => !p.isBot);
-    if (!nextHost) {
-      await deleteRoomFully(roomId, room.players);
-      return;
-    }
+    if (!nextHost) { await deleteRoomFully(roomId, room.players); return; }
     hostId = nextHost.uid;
   }
 
@@ -227,11 +214,7 @@ export async function leaveRoom(user, roomId) {
   }
 
   players.sort((a, b) => a.seat - b.seat);
-
-  if (players.length === 0 && spectators.length === 0) {
-    await deleteRoomFully(roomId, room.players);
-    return;
-  }
+  if (players.length === 0 && spectators.length === 0) { await deleteRoomFully(roomId, room.players); return; }
 
   await updateDoc(roomRef(roomId), { players, spectators, hostId, updatedAt: Date.now() });
 }
@@ -247,31 +230,19 @@ export async function fillBotsInRoom(roomId) {
 export async function updateRoomSettings(roomId, settings) {
   const room = await getRoom(roomId);
   if (!room) return;
-  await updateDoc(roomRef(roomId), {
-    settings: { ...room.settings, ...settings },
-    updatedAt: Date.now()
-  });
+  await updateDoc(roomRef(roomId), { settings: { ...room.settings, ...settings }, updatedAt: Date.now() });
 }
 
 export async function heartbeatRoom(roomId) {
-  try {
-    await updateDoc(roomRef(roomId), { lastHeartbeat: Date.now() });
-  } catch (error) {
-    // room may already be gone
-  }
+  try { await updateDoc(roomRef(roomId), { lastHeartbeat: Date.now() }); } catch (e) {}
 }
 
 export async function deleteRoomFully(roomId, players = []) {
   try {
-    for (const p of players) {
-      try { await deleteDoc(handRef(roomId, p.uid)); } catch (e) { /* ignore */ }
-    }
+    for (const p of players) { try { await deleteDoc(handRef(roomId, p.uid)); } catch (e) {} }
     await deleteDoc(roomRef(roomId));
     return true;
-  } catch (error) {
-    console.warn("deleteRoomFully failed:", roomId, error);
-    return false;
-  }
+  } catch (error) { return false; }
 }
 
 export async function enforceReadyDeadline(roomId) {
@@ -285,10 +256,7 @@ export async function enforceReadyDeadline(roomId) {
   let players = room.players.filter((p) => !kickedIds.has(p.uid));
   const spectators = [
     ...room.spectators,
-    ...unready.map((p) => ({
-      uid: p.uid, username: p.username, displayName: p.displayName,
-      joinedAt: Date.now(), kickedForNotReady: true
-    }))
+    ...unready.map((p) => ({ uid: p.uid, username: p.username, displayName: p.displayName, joinedAt: Date.now(), kickedForNotReady: true }))
   ];
 
   let hostId = room.hostId;
@@ -297,9 +265,7 @@ export async function enforceReadyDeadline(roomId) {
     hostId = successor ? successor.uid : null;
   }
 
-  if (!players.some((p) => !p.isBot)) {
-    return { kicked: unready, empty: true };
-  }
+  if (!players.some((p) => !p.isBot)) return { kicked: unready, empty: true };
 
   players = ensureBots(players, room.settings.botLevel);
   players.sort((a, b) => a.seat - b.seat);
@@ -316,8 +282,7 @@ export async function adjustCash(username, delta, type, note, adminUsername) {
   const newCash = Math.max(0, Math.floor(currentCash + delta));
   await updateDoc(userRef, { cash: newCash, updatedAt: Date.now() });
   await addDoc(collection(db, "users", username, "transactions"), {
-    type, amount: delta, balanceAfter: newCash, note: note || "",
-    admin: adminUsername || null, createdAt: Date.now()
+    type, amount: delta, balanceAfter: newCash, note: note || "", admin: adminUsername || null, createdAt: Date.now()
   });
   return newCash;
 }
@@ -331,8 +296,7 @@ export async function setCash(username, amount, reason, adminUsername) {
   const delta = newCash - currentCash;
   await updateDoc(userRef, { cash: newCash, updatedAt: Date.now() });
   await addDoc(collection(db, "users", username, "transactions"), {
-    type: "admin_set", amount: delta, balanceAfter: newCash,
-    note: reason || "", admin: adminUsername || "", createdAt: Date.now()
+    type: "admin_set", amount: delta, balanceAfter: newCash, note: reason || "", admin: adminUsername || "", createdAt: Date.now()
   });
   return newCash;
 }
@@ -343,25 +307,19 @@ export async function updateDisplayName(username, displayName, adminUsername) {
 }
 
 export async function addAdminLog(adminUsername, action, target, details) {
-  await addDoc(collection(db, "adminLogs"), {
-    adminUsername, action, target, details, createdAt: Date.now()
-  });
+  await addDoc(collection(db, "adminLogs"), { adminUsername, action, target, details, createdAt: Date.now() });
 }
 
 /* ============ GAME FLOW ============ */
 async function updatePlayerField(roomId, uid, field, value) {
   const room = await getRoom(roomId);
   if (!room) return;
-  const players = room.players.map((player) =>
-    player.uid === uid ? { ...player, [field]: value } : player
-  );
+  const players = room.players.map((player) => player.uid === uid ? { ...player, [field]: value } : player);
   await updateDoc(roomRef(roomId), { players, updatedAt: Date.now() });
 }
 
 export async function submitArrangement(roomId, uid, arrangement, isFouled = false) {
-  await setDoc(handRef(roomId, uid), {
-    arrangement, fouled: isFouled, submitted: true, updatedAt: Date.now()
-  }, { merge: true });
+  await setDoc(handRef(roomId, uid), { arrangement, fouled: isFouled, submitted: true, updatedAt: Date.now() }, { merge: true });
   await updatePlayerField(roomId, uid, "submitted", true);
 }
 
@@ -369,12 +327,8 @@ export async function declareSpecial(roomId, uid, hand) {
   const spec = detectSpecial(hand);
   if (!spec) throw new Error("No special hand.");
   const sorted = sortCards(hand);
-  const arrangement = {
-    front: sorted.slice(0, 3), middle: sorted.slice(3, 8), back: sorted.slice(8, 13)
-  };
-  await setDoc(handRef(roomId, uid), {
-    arrangement, special: spec, fouled: false, submitted: true, updatedAt: Date.now()
-  }, { merge: true });
+  const arrangement = { front: sorted.slice(0, 3), middle: sorted.slice(3, 8), back: sorted.slice(8, 13) };
+  await setDoc(handRef(roomId, uid), { arrangement, special: spec, fouled: false, submitted: true, updatedAt: Date.now() }, { merge: true });
   await updatePlayerField(roomId, uid, "submitted", true);
   return spec;
 }
@@ -389,12 +343,8 @@ export async function startRound(roomId, user) {
   if (room.hostId !== user.uid) throw new Error("Only the host can start the round.");
   if (!["lobby", "round_end"].includes(room.status)) throw new Error("Room cannot start right now.");
 
-  let players = room.players.map((player) => ({
-    ...player, submitted: false, ready: Boolean(player.isBot)
-  }));
-  if (room.settings.autoFillBots !== false) {
-    players = ensureBots(players, room.settings.botLevel);
-  }
+  let players = room.players.map((player) => ({ ...player, submitted: false, ready: Boolean(player.isBot) }));
+  if (room.settings.autoFillBots !== false) players = ensureBots(players, room.settings.botLevel);
 
   const humans = players.filter((player) => !player.isBot);
   if (humans.length === 0) throw new Error("At least one human player is required.");
@@ -402,15 +352,12 @@ export async function startRound(roomId, user) {
   const minBet = Number(room.settings.minBet) || 0;
   for (const human of humans) {
     const userData = await getUserData(human.username);
-    if (!userData || Number(userData.cash) < minBet) {
-      throw new Error(`${human.displayName} does not have enough cash.`);
-    }
+    if (!userData || Number(userData.cash) < minBet) throw new Error(`${human.displayName} does not have enough cash.`);
   }
 
   const roundNumber = (Number(room.roundNumber) || 0) + 1;
   const arrangeTimerSeconds = Number(room.settings.arrangeTimerSeconds) || 0;
   const phaseEndsAt = arrangeTimerSeconds > 0 ? Date.now() + arrangeTimerSeconds * 1000 : null;
-
   players.sort((a, b) => a.seat - b.seat);
 
   await updateDoc(roomRef(roomId), {
@@ -453,8 +400,7 @@ export async function replaceUnreadyWithBots(roomId) {
   const hostPlayer = players.find((p) => p.uid === hostId);
   if (hostPlayer && !hostPlayer.isBot && !hostPlayer.ready) {
     const successor = players.find((p) => !p.isBot && p.ready && p.uid !== hostId);
-    if (successor) hostId = successor.uid;
-    else return;
+    if (successor) hostId = successor.uid; else return;
   }
   players = players.filter((p) => p.isBot || p.ready);
   if (!players.some((p) => !p.isBot)) return;
@@ -466,21 +412,18 @@ export async function replaceUnreadyWithBots(roomId) {
 export async function claimHostIfOrphan(roomId) {
   const room = await getRoom(roomId);
   if (!room) return;
-  const hostInPlayers = room.players.some((p) => p.uid === room.hostId);
-  if (hostInPlayers) return;
+  if (room.players.some((p) => p.uid === room.hostId)) return;
   const firstHuman = room.players.find((p) => !p.isBot);
-  await updateDoc(roomRef(roomId), {
-    hostId: firstHuman ? firstHuman.uid : null, updatedAt: Date.now()
-  });
+  await updateDoc(roomRef(roomId), { hostId: firstHuman ? firstHuman.uid : null, updatedAt: Date.now() });
 }
 
 async function updateUserStats(username, points, isWinner) {
   await updateDoc(doc(db, "users", username), {
-    games: increment(1), points: increment(points || 0),
-    wins: increment(isWinner ? 1 : 0), updatedAt: Date.now()
+    games: increment(1), points: increment(points || 0), wins: increment(isWinner ? 1 : 0), updatedAt: Date.now()
   });
 }
 
+/* ============ HOUSE BANK SETTLEMENT LOGIC ============ */
 export async function finishRound(roomId, user) {
   const room = await getRoom(roomId);
   if (!room) return;
@@ -498,16 +441,10 @@ export async function finishRound(roomId, user) {
       try {
         const snap = await getDoc(handRef(roomId, player.uid));
         let data = snap.exists() ? snap.data() : null;
-
         if (!data) {
-          data = {
-            uid: player.uid, username: player.username, hand: [],
-            arrangement: { front: [], middle: [], back: [] },
-            fouled: true, submitted: true, roundNumber: room.roundNumber, updatedAt: Date.now()
-          };
+          data = { uid: player.uid, username: player.username, hand: [], arrangement: { front: [], middle: [], back: [] }, fouled: true, submitted: true, roundNumber: room.roundNumber, updatedAt: Date.now() };
           await setDoc(handRef(roomId, player.uid), data, { merge: true });
         }
-
         if (!data.special && data.hand && data.hand.length === 13) {
           const spec = detectSpecial(data.hand);
           if (spec) {
@@ -515,26 +452,18 @@ export async function finishRound(roomId, user) {
             data.special = spec;
             data.arrangement = { front: sorted.slice(0, 3), middle: sorted.slice(3, 8), back: sorted.slice(8, 13) };
             data.submitted = true;
-            await setDoc(handRef(roomId, player.uid), {
-              arrangement: data.arrangement, special: spec, submitted: true, updatedAt: Date.now()
-            }, { merge: true });
+            await setDoc(handRef(roomId, player.uid), { arrangement: data.arrangement, special: spec, submitted: true, updatedAt: Date.now() }, { merge: true });
           }
         }
-
         if (!data.arrangement && data.hand && data.hand.length === 13) {
           const arrangement = botArrangeHand(data.hand, player.botLevel || room.settings.botLevel || "normal");
           await submitArrangement(roomId, player.uid, arrangement, false);
           data.arrangement = arrangement;
           data.submitted = true;
         }
-
         handsMap[player.uid] = data;
       } catch (error) {
-        console.error("Failed to process hand for player:", player.uid, error);
-        handsMap[player.uid] = {
-          uid: player.uid, username: player.username, hand: [],
-          arrangement: { front: [], middle: [], back: [] }, fouled: true, submitted: true
-        };
+        handsMap[player.uid] = { uid: player.uid, username: player.username, hand: [], arrangement: { front: [], middle: [], back: [] }, fouled: true, submitted: true };
       }
     }
 
@@ -545,93 +474,89 @@ export async function finishRound(roomId, user) {
     if (!alreadySettled) {
       const today = new Date().toISOString().slice(0, 10);
       const minBet = Number(room.settings.minBet) || 0;
-
       const playerMap = {};
       room.players.forEach((p) => { playerMap[p.uid] = p; });
 
-      // House-Bank economy: track the pot in memory while we settle each player
-      let currentPot = await getHousePot();
-      let housePotDelta = 0;
+      let currentPot = await getHousePot(); 
+      let housePotDelta = 0; 
 
       for (const ranking of results.rankings) {
         if (ranking.isBot) continue;
+        if (ranking.fouled && ranking.netCoins > 0) continue;
 
-        const netCoins = Number(ranking.netCoins) || 0;
+        // Fetch real wallet balance BEFORE settling
+        const userData = await getUserData(ranking.username);
+        const currentCash = Number(userData?.cash) || 0;
 
-        // Split the net result into the bot-funded part and the human-funded part
+        let humanDelta = 0;
         let botDelta = 0;
         const myDetails = results.details[ranking.uid] || [];
         myDetails.forEach((d) => {
           const opp = playerMap[d.opponentUid];
           if (!opp) return;
-          const netVsOpp =
-            ((d.points || 0) + (d.royaltyEarned || 0) - (d.royaltyLost || 0)) * minBet;
+          const netVsOpp = ((d.points || 0) + (d.royaltyEarned || 0) - (d.royaltyLost || 0)) * minBet;
           if (opp.isBot) botDelta += netVsOpp;
+          else humanDelta += netVsOpp;
         });
-        const humanDelta = netCoins - botDelta;
 
-        if (ranking.fouled && netCoins > 0) {
-          console.error("BLOCKED positive settlement for fouled player:", ranking.uid);
-          continue;
-        }
-
-        // Human-vs-human coins move wallet-to-wallet; pot untouched
-        let walletChange = humanDelta;
+        let walletChange = 0;
         let potDelta = 0;
 
-        if (botDelta < 0) {
-          // LOSS to bots: coins leave the wallet and FILL the House Pot
-          walletChange += botDelta;
-          potDelta += Math.abs(botDelta);
-        } else if (botDelta > 0) {
-          // WIN vs bots:
-          // 1) Up to the remaining 10M daily cap is minted FROM THE AIR
-          // 2) Anything beyond the cap is paid OUT OF THE HOUSE POT
-          //    (until the pot is drained to 0 — then, and only then, no payout)
-          const userData = await getUserData(ranking.username);
+        // 1. Calculate Bot Wins (Air + Pot Payout)
+        let botWinPayout = 0;
+        if (botDelta > 0) {
           let currentBotWins = 0;
-          if (userData && userData.lastBotWinDate === today) {
-            currentBotWins = Number(userData.dailyBotWinnings) || 0;
-          }
-
+          if (userData && userData.lastBotWinDate === today) currentBotWins = Number(userData.dailyBotWinnings) || 0;
           const remainingCap = Math.max(0, DAILY_BOT_LIMIT - currentBotWins);
           const airPortion = Math.min(botDelta, remainingCap);
           const potPortion = botDelta - airPortion;
           const potPayout = Math.min(potPortion, Math.max(0, currentPot));
 
-          walletChange += airPortion + potPayout;
+          botWinPayout = airPortion + potPayout;
           potDelta -= potPayout;
 
           if (airPortion > 0) {
-            await updateDoc(doc(db, "users", ranking.username), {
-              dailyBotWinnings: increment(airPortion),
-              lastBotWinDate: today
-            });
-          }
-
-          const unpaid = potPortion - potPayout;
-          if (unpaid > 0) {
-            console.warn(`House Pot dry: ${ranking.username} left unpaid ${unpaid}`);
+            await updateDoc(doc(db, "users", ranking.username), { dailyBotWinnings: increment(airPortion), lastBotWinDate: today });
           }
         }
+
+        // 2. WALLET BANKRUPTCY LOGIC (Cap losses to actual cash available)
+        const humanWinPortion = humanDelta > 0 ? humanDelta : 0;
+        const totalAvailableCash = currentCash + humanWinPortion + botWinPayout;
+
+        let totalTheoreticalLoss = 0;
+        if (humanDelta < 0) totalTheoreticalLoss += Math.abs(humanDelta);
+        if (botDelta < 0) totalTheoreticalLoss += Math.abs(botDelta);
+
+        const actualTotalLoss = Math.min(totalTheoreticalLoss, totalAvailableCash);
+
+        let humanLossPaid = 0;
+        let botLossPaid = 0;
+
+        // Pay humans first
+        if (humanDelta < 0) humanLossPaid = Math.min(Math.abs(humanDelta), actualTotalLoss);
+        
+        // Pay House Pot with whatever is left
+        if (botDelta < 0) {
+          botLossPaid = Math.min(Math.abs(botDelta), actualTotalLoss - humanLossPaid);
+          potDelta += botLossPaid; // Pot ONLY gets real cash the player actually had
+        }
+
+        // 3. Final Wallet Change
+        walletChange = humanWinPortion + botWinPayout - humanLossPaid - botLossPaid;
 
         currentPot += potDelta;
         housePotDelta += potDelta;
 
         if (walletChange !== 0) {
-          await adjustCash(ranking.username, walletChange, "game_settle",
-            `Room ${roomId} round ${results.roundNumber}`, user.username);
+          await adjustCash(ranking.username, walletChange, "game_settle", `Room ${roomId} round ${results.roundNumber}`, user.username);
         }
 
-        await updateUserStats(ranking.username, ranking.scorePoints,
-          ranking.overallRank === 1 && ranking.scorePoints > 0);
+        await updateUserStats(ranking.username, ranking.scorePoints, ranking.overallRank === 1 && ranking.scorePoints > 0);
       }
 
       if (housePotDelta !== 0) {
-        await setDoc(housePotRef(), {
-          amount: increment(housePotDelta),
-          updatedAt: Date.now()
-        }, { merge: true });
+        await setDoc(housePotRef(), { amount: increment(housePotDelta), updatedAt: Date.now() }, { merge: true });
       }
     }
 
@@ -647,12 +572,8 @@ export async function finishRound(roomId, user) {
     console.error("finishRound failed:", error);
     try {
       const players = room.players.map((p) => ({ ...p, submitted: true, ready: Boolean(p.isBot) }));
-      await updateDoc(roomRef(roomId), {
-        results: null, players, status: "round_end", phaseEndsAt: null, updatedAt: Date.now()
-      });
-    } catch (e2) {
-      console.error("emergency progress failed:", e2);
-    }
+      await updateDoc(roomRef(roomId), { results: null, players, status: "round_end", phaseEndsAt: null, updatedAt: Date.now() });
+    } catch (e2) { console.error("emergency progress failed:", e2); }
   }
 }
 
@@ -687,8 +608,7 @@ export async function spectateRoom(user, code, displayName) {
   code = String(code || "").trim().toUpperCase();
   const room = await getRoom(code);
   if (!room) throw new Error("Room not found.");
-  if (room.players.some((p) => p.uid === user.uid)) return code;
-  if (room.spectators.some((s) => s.uid === user.uid)) return code;
+  if (room.players.some((p) => p.uid === user.uid) || room.spectators.some((s) => s.uid === user.uid)) return code;
   const spectators = [...room.spectators, { uid: user.uid, username: user.username, displayName, joinedAt: Date.now() }];
   await updateDoc(roomRef(code), { spectators });
   return code;
@@ -706,13 +626,10 @@ export async function sweepStaleRooms(rooms, excludeUid) {
     const noHumans = humans.length === 0;
     if (!inactive && !noHumans) continue;
     if (excludeUid) {
-      const inPlayers = (room.players || []).some((p) => p.uid === excludeUid);
-      const inSpectators = (room.spectators || []).some((s) => s.uid === excludeUid);
-      if (inPlayers || inSpectators) continue;
+      if ((room.players || []).some((p) => p.uid === excludeUid) || (room.spectators || []).some((s) => s.uid === excludeUid)) continue;
     }
     sweptRoomIds.add(roomId);
     await deleteRoomFully(roomId, room.players || []);
-    console.log("Swept dead table:", room.roomCode, noHumans ? "(no real players)" : "(3min inactive)");
   }
 }
 
@@ -732,8 +649,7 @@ export async function claimDailyBonus(username) {
     const newCash = currentCash + DAILY_BONUS;
     tx.update(userRef, { cash: newCash, lastClaimDate: today, updatedAt: Date.now() });
     tx.set(doc(db, "users", username, "transactions", today + "_daily"), {
-      type: "daily_bonus", amount: DAILY_BONUS, balanceAfter: newCash,
-      note: "Daily login bonus", admin: null, createdAt: Date.now()
+      type: "daily_bonus", amount: DAILY_BONUS, balanceAfter: newCash, note: "Daily login bonus", admin: null, createdAt: Date.now()
     });
     return newCash;
   });
