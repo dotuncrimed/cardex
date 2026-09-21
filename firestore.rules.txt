@@ -1,23 +1,15 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function signedIn() {
-      return request.auth != null;
-    }
-
+    function signedIn() { return request.auth != null; }
     function isSameUsername(username) {
-      return signedIn() &&
-        request.auth.token.email == username + '@chinesepoker.app';
+      return signedIn() && request.auth.token.email == username + '@chinesepoker.app';
     }
-
     match /users/{username} {
       allow read: if signedIn();
       allow create: if isSameUsername(username);
       allow update: if signedIn();
       allow delete: if false;
-
       match /transactions/{transactionId} {
         allow read: if signedIn();
         allow create: if signedIn();
@@ -25,20 +17,21 @@ service cloud.firestore {
         allow delete: if false;
       }
     }
-
+    match /meta/{docId} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
     match /rooms/{roomId} {
       allow read: if signedIn();
       allow create: if signedIn();
       allow update: if signedIn();
       allow delete: if signedIn();
-
       match /hands/{uid} {
         allow read: if signedIn();
         allow create: if signedIn();
         allow update: if signedIn();
         allow delete: if signedIn();
       }
-
       match /emojis/{emojiId} {
         allow read: if signedIn();
         allow create: if signedIn();
@@ -46,7 +39,6 @@ service cloud.firestore {
         allow delete: if signedIn();
       }
     }
-
     match /adminLogs/{logId} {
       allow read: if signedIn();
       allow create: if signedIn();
