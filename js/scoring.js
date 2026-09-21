@@ -521,3 +521,4 @@ export function calculateResults(room, handsMap) {
     calculatedAt: Date.now()
   };
 }
+
