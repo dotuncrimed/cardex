@@ -374,19 +374,6 @@ async function enterRoom(roomId) {
   showScreen("room");
 }
 
-function injectHousePotChip() {
-  if (document.getElementById("house-pot-chip")) return;
-  const head = document.querySelector(".fp-menu-head > div:last-child") || document.querySelector(".fp-menu-head");
-  if (head) {
-    const chip = document.createElement("div");
-    chip.id = "house-pot-chip";
-    chip.className = "fp-cash-chip";
-    chip.style.background = "rgba(156, 39, 176, 0.4)";
-    chip.style.marginTop = "6px";
-    chip.innerHTML = '🏆 House Pot: $ <span id="house-pot-amount">0</span>';
-    head.appendChild(chip);
-  }
-}
 
 function renderMenu() {
   if (!state.user) return;
@@ -405,7 +392,6 @@ function renderMenu() {
     claimBtn.textContent = claimed ? "✓ Claimed — back tomorrow" : "🎁 Claim Daily +10,000";
   }
   
-  injectHousePotChip();
   const potEl = document.getElementById("house-pot-amount");
   if (potEl) potEl.textContent = formatCash(state.housePot || 0);
 }
