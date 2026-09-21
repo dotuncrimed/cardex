@@ -312,3 +312,4 @@ function createLeaderboardUI() {
 
 injectLeaderboardStyles();
 createLeaderboardUI();
+
