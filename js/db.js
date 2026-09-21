@@ -10,23 +10,18 @@ import { detectSpecial } from "./evaluator.js";
 
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-/* ============ LIFECYCLE CONSTANTS ============ */
+/* ============ LIFECYCLE & ECONOMY CONSTANTS ============ */
 const STALE_MS = 3 * 60 * 1000;          // 3 minutes inactive -> kill table
-export const READY_FALLBACK_MS = 120000; // ready deadline fallback if ready timer is OFF
+export const READY_FALLBACK_MS = 120000; // ready deadline fallback
+export const DAILY_BOT_LIMIT = 10000000; // 10M max win from bots per day
 const sweptRoomIds = new Set();
 
-/* ============ ECONOMY CONSTANTS ============ */
-export const DAILY_BOT_LIMIT = 10000000; // 10M max win from bots per day
-
+/* ============ FIRESTORE REFS ============ */
 function roomRef(roomId) { return doc(db, "rooms", roomId); }
 function handRef(roomId, uid) { return doc(db, "rooms", roomId, "hands", uid); }
 function housePotRef() { return doc(db, "meta", "housePot"); }
-export async function getHousePot() {
-  const snap = await getDoc(housePotRef());
-  return snap.exists() ? (Number(snap.data().amount) || 0) : 0;
-}
 
-
+/* ============ HELPERS ============ */
 function generateRoomCode(length = 5) {
   let code = "";
   for (let i = 0; i < length; i++) {
@@ -81,12 +76,6 @@ export function listenUser(username, callback) {
 }
 
 /* ============ HOUSE POT ============ */
-export function listenHousePot(callback) {
-  return onSnapshot(housePotRef(), (snap) => {
-    callback(snap.exists() ? (Number(snap.data().amount) || 0) : 0);
-  });
-}
-
 export async function getHousePot() {
   const snap = await getDoc(housePotRef());
   return snap.exists() ? (Number(snap.data().amount) || 0) : 0;
@@ -555,7 +544,12 @@ export async function finishRound(roomId, user) {
 
     if (!alreadySettled) {
       const today = new Date().toISOString().slice(0, 10);
+      const minBet = Number(room.settings.minBet) || 0;
       
+      // Build player map for quick lookup
+      const playerMap = {};
+      room.players.forEach(p => { playerMap[p.uid] = p; });
+
       // 🏦 HOUSE BANK LOGIC: Fetch current pot to act as the bankroll
       let currentPot = await getHousePot(); 
       let potNetChange = 0; 
@@ -568,10 +562,20 @@ export async function finishRound(roomId, user) {
           continue;
         }
 
-        const humanDelta = Number(ranking.humanNetCoins) || 0;
-        const botDelta = Number(ranking.botNetCoins) || 0;
+        // 🕵️ BULLETPROOF CALCULATION: Calculate human/bot deltas directly from details
+        let humanDelta = 0;
+        let botDelta = 0;
+        const myDetails = results.details[ranking.uid] || [];
         
-        let walletChange = humanDelta; // Human vs Human is paid directly
+        myDetails.forEach(d => {
+          const opp = playerMap[d.opponentUid];
+          if (!opp) return;
+          const coins = d.points * minBet;
+          if (opp.isBot) botDelta += coins;
+          else humanDelta += coins;
+        });
+
+        let walletChange = humanDelta; // Human vs Human is paid directly from wallets
 
         // 📉 LOSSES TO BOTS (Feeds the House Pot)
         if (botDelta < 0) {
