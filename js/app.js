@@ -11,9 +11,13 @@ import {
   fillBotsInRoom, replaceUnreadyWithBots, updateRoomSettings, getUserData,
   adjustCash, setCash, updateDisplayName, addAdminLog, listenAllUsers,
   listenAllRooms, spectateRoom, sweepStaleRooms, claimDailyBonus, transferCash,
-  heartbeatRoom, deleteRoomFully, enforceReadyDeadline, READY_FALLBACK_MS,
-  listenHousePot
+  heartbeatRoom, deleteRoomFully, enforceReadyDeadline, READY_FALLBACK_MS
 } from "./db.js";
+import * as dbApi from "./db.js"; // namespace import for optional House Pot exports
+
+/* ============ FIXED ECONOMY RULES ============ */
+const FIXED_READY_TIMER_SECONDS = 30; // ready timer is ALWAYS 30s
+const FIXED_BOT_LEVEL = "hard";       // bots are ALWAYS hard
 
 const state = {
   user: null,
@@ -108,34 +112,28 @@ function timeAgo(ts) {
 function assignedCardsSet() {
   return new Set([...state.arrangement.front, ...state.arrangement.middle, ...state.arrangement.back]);
 }
-
 function currentUserInRoomPlayers() {
   if (!state.room || !state.user) return false;
   return state.room.players.some((player) => player.uid === state.user.uid);
 }
-
 function currentUserInRoomSpectators() {
   if (!state.room || !state.user) return false;
   return state.room.spectators.some((spectator) => spectator.uid === state.user.uid);
 }
-
 function currentUserPlayerObject() {
   if (!state.room || !state.user) return null;
   return state.room.players.find((player) => player.uid === state.user.uid) || null;
 }
-
 function isHost() { return Boolean(state.room && state.user && state.room.hostId === state.user.uid); }
 
 function clearRoomListeners() {
   if (state.unsubRoom) { state.unsubRoom(); state.unsubRoom = null; }
   if (state.unsubHand) { state.unsubHand(); state.unsubHand = null; }
 }
-
 function clearRevealTimers() {
   (state.revealTimers || []).forEach(clearTimeout);
   state.revealTimers = [];
 }
-
 function clearRoomState() {
   clearRoomListeners();
   Object.values(state.cashListeners || {}).forEach((un) => un && un());
@@ -172,6 +170,22 @@ function showBanner(text, ms) {
   b.textContent = text;
   b.classList.remove("hidden");
   setTimeout(() => { b.classList.add("hidden"); }, ms);
+}
+
+/* ============ HOUSE POT CHIP (dashboard) ============ */
+function housePotSupported() { return typeof dbApi.listenHousePot === "function"; }
+
+function ensureHousePotChip() {
+  if (!housePotSupported()) return;
+  if (document.getElementById("house-pot-chip")) return;
+  const head = document.querySelector(".fp-menu-head > div:last-child") || document.querySelector(".fp-menu-head");
+  if (!head) return;
+  const chip = document.createElement("div");
+  chip.id = "house-pot-chip";
+  chip.className = "fp-cash-chip";
+  chip.style.background = "rgba(156, 39, 176, 0.4)";
+  chip.innerHTML = '🏆 House Pot: $ <span id="house-pot-amount">0</span>';
+  head.appendChild(chip);
 }
 
 function syncCashListeners() {
@@ -374,16 +388,12 @@ async function enterRoom(roomId) {
   showScreen("room");
 }
 
-
 function renderMenu() {
   if (!state.user) return;
   setText("#menu-username", state.userData?.displayName || state.user.username);
-  const menuCashEl = $("#menu-cash");
-  if (menuCashEl) menuCashEl.textContent = formatCash(state.userData?.cash ?? 0);
-  
+  setText("#menu-cash", formatCash(state.userData?.cash ?? 0));
   const avatarEl = $("#menu-avatar");
   if (avatarEl) avatarEl.textContent = (state.userData?.displayName || state.user.username || "?").charAt(0).toUpperCase();
-  
   const claimBtn = $("#claim-daily-button");
   if (claimBtn) {
     const today = new Date().toISOString().slice(0, 10);
@@ -391,7 +401,6 @@ function renderMenu() {
     claimBtn.disabled = claimed;
     claimBtn.textContent = claimed ? "✓ Claimed — back tomorrow" : "🎁 Claim Daily +10,000";
   }
-  
   const potEl = document.getElementById("house-pot-amount");
   if (potEl) potEl.textContent = formatCash(state.housePot || 0);
 }
@@ -508,8 +517,8 @@ function renderRoomInfo() {
   setText("#room-code", state.room.roomCode);
   setText("#room-status", state.room.status);
   setText("#room-round", state.room.roundNumber || 0);
-  setText("#room-min-bet", state.room.settings.minBet);
-  setText("#room-pot", state.room.pot || 0);
+  setText("#room-min-bet", formatCash(state.room.settings.minBet));
+  setText("#room-pot", formatCash(state.room.pot || 0));
   setText("#room-bot-level", state.room.settings.botLevel);
   const timerElement = $("#room-timer");
   if (timerElement) {
@@ -521,9 +530,8 @@ function renderRoomInfo() {
     }
   }
   setText("#pg-round", "Round " + (state.room.roundNumber || 0));
-  setText("#pg-pot", "1 pt = " + (state.room.settings.minBet || 0));
-  const hudCash = $("#hud-cash");
-  if (hudCash) hudCash.textContent = formatCash(state.userData?.cash ?? 0);
+  setText("#pg-pot", "1 pt = " + formatCash(state.room.settings.minBet || 0));
+  setText("#hud-cash", formatCash(state.userData?.cash ?? 0));
 }
 
 function renderLobbySection() {
@@ -556,7 +564,6 @@ function renderLobbySection() {
   if (fillBotsButton) fillBotsButton.classList.toggle("hidden", !isHost() || !["lobby", "round_end"].includes(status));
   const canTakeSeat = currentUserInRoomSpectators() && ["lobby", "round_end"].includes(status);
   if (takeSeatButton) takeSeatButton.classList.toggle("hidden", !canTakeSeat);
-
   const joinGameLobbyBtn = $("#join-game-button");
   if (joinGameLobbyBtn) {
     const hasMoney = state.userData && Number(state.userData.cash) >= Number(state.room?.settings?.minBet || 0);
@@ -691,13 +698,11 @@ function finalizeReveal() {
   if (skip) skip.classList.add("hidden");
   const readyArea = document.getElementById("ready-area");
   if (readyArea) readyArea.classList.remove("hidden");
-
   if (state.room && state.room.results && state.coinsFlyedFor !== state.room.roundNumber) {
     const winner = state.room.results.rankings && state.room.results.rankings[0];
     if (winner) flyCoinsToWinner(winner.uid);
     state.coinsFlyedFor = state.room.roundNumber;
   }
-
   renderReadyArea();
 }
 
@@ -707,7 +712,6 @@ function skipReveal() {
   const results = state.room.results;
   const myPlayer = currentUserPlayerObject();
   const mySeat = myPlayer ? myPlayer.seat : 0;
-
   const specialPlayers = [];
   state.room.players.forEach((pl) => {
     const spec = results.specials ? results.specials[pl.uid] : null;
@@ -717,7 +721,6 @@ function skipReveal() {
     showBanner("✨ SPECIAL HAND! ✨", 3000);
     setRoomMessage("✨ " + specialPlayers.join(" | "));
   }
-
   state.room.players.forEach((pl) => {
     const full = ["front", "middle", "back"].reduce((s, k) => s + rowScoreFor(results, pl.uid, k), 0);
     const pos = SEAT_POS[seatOffset(pl.seat, mySeat)];
@@ -742,7 +745,6 @@ function playRevealSequence(results) {
   if (readyArea) readyArea.classList.add("hidden");
   ["top", "left", "right", "bottom"].forEach((p) => { const el = document.getElementById("reveal-" + p); if (el) el.innerHTML = ""; });
   updateScorePanel(results, state.user.uid, []);
-
   const specialPlayers = [];
   state.room.players.forEach((pl) => {
     const spec = results.specials ? results.specials[pl.uid] : null;
@@ -752,7 +754,6 @@ function playRevealSequence(results) {
     showBanner("✨ SPECIAL HAND! ✨", 3000);
     setRoomMessage("✨ " + specialPlayers.join(" | "));
   }
-
   const myPlayer = currentUserPlayerObject();
   const mySeat = myPlayer ? myPlayer.seat : 0;
   const seats = state.room.players.map((pl) => ({ pl, pos: SEAT_POS[seatOffset(pl.seat, mySeat)] }));
@@ -857,7 +858,7 @@ function renderArrangeSection() {
     disableArrangeControls(true);
     renderTableMyRows();
     setTimeout(async () => {
-      const arrangement = botArrangeHand(state.handData.hand, "hard");
+      const arrangement = botArrangeHand(state.handData.hand, FIXED_BOT_LEVEL);
       try {
         await submitArrangement(state.roomId, state.user.uid, arrangement);
         setRoomMessage("Cards auto-arranged and submitted!");
@@ -978,7 +979,7 @@ function renderResultBoards(results) {
     if (!ranking.isBot) {
       const net = document.createElement("div");
       net.className = "pg-board-net";
-      net.textContent = `Net ${ranking.netCoins >= 0 ? "+" : ""}${ranking.netCoins} coins`;
+      net.textContent = `Net ${ranking.netCoins >= 0 ? "+" : ""}${formatCash(ranking.netCoins)} coins`;
       board.appendChild(net);
     }
     boards.appendChild(board);
@@ -996,7 +997,7 @@ function renderResultsSection() {
     if (resultDetails) resultDetails.innerHTML = "";
     return;
   }
-  if (resultSummary) resultSummary.textContent = `Round ${results.roundNumber} | 1 pt = ${results.minBet} | Winner = most points`;
+  if (resultSummary) resultSummary.textContent = `Round ${results.roundNumber} | 1 pt = ${formatCash(results.minBet)} | Winner = most points`;
   if (resultTable) {
     resultTable.innerHTML = "";
     const header = resultTable.insertRow();
@@ -1047,7 +1048,6 @@ function renderResultsSection() {
   }
   renderResultBoards(results);
   renderReadyArea();
-
   const joinGameResultsBtn = $("#join-game-results-button");
   if (joinGameResultsBtn) {
     const isSpectator = currentUserInRoomSpectators();
@@ -1099,7 +1099,7 @@ function renderReadyArea() {
       if (rankInfo.scoops > 0) rankBadge += `<span class="scoop-badge">🏠 ${rankInfo.scoops}</span>`;
       if (rankInfo.royalties > 0) rankBadge += `<span class="royalty-badge">💎 +${rankInfo.royalties}</span>`;
       if (!player.isBot) {
-        const netStr = rankInfo.net >= 0 ? `+${rankInfo.net}` : `${rankInfo.net}`;
+        const netStr = rankInfo.net >= 0 ? `+${formatCash(rankInfo.net)}` : formatCash(rankInfo.net);
         rankBadge += `<span class="net-badge">${netStr}</span>`;
       }
     }
@@ -1115,7 +1115,6 @@ function renderReadyArea() {
   if (readyButton) readyButton.classList.toggle("hidden", !showReadyButton);
   const showForceStart = isHost();
   if (forceStartButton) forceStartButton.classList.toggle("hidden", !showForceStart);
-
   const joinGameReadyBtn = $("#join-game-ready-button");
   if (joinGameReadyBtn) {
     const isSpectator = currentUserInRoomSpectators();
@@ -1198,7 +1197,15 @@ async function hostController() {
   if (now < (state.hostCooldownUntil || 0)) return;
   const room = state.room;
   const humans = room.players.filter((p) => !p.isBot);
-  const fail = () => {
+
+  const fail = (error) => {
+    const msg = String((error && error.message) || "").toLowerCase();
+    if (msg.includes("quota") || msg.includes("too many") || msg.includes("resource_exhausted") || msg.includes("permission")) {
+      state.hostCooldownUntil = Date.now() + 60000;
+      setRoomMessage("⚠️ Server limit reached. Pausing host actions for 60s.");
+      console.warn("Quota/permission error — host backing off 60s:", error);
+      return;
+    }
     state.hostFailCount = (state.hostFailCount || 0) + 1;
     if (state.hostFailCount >= 3) {
       state.hostCooldownUntil = Date.now() + 10000;
@@ -1214,7 +1221,7 @@ async function hostController() {
       console.warn("Scoring stuck for 20s, retrying finishRound");
       state.hostBusy = true;
       try { await finishRound(room.roomCode, state.user); succeed(); }
-      catch (error) { console.error(error); fail(); }
+      catch (error) { console.error(error); fail(error); }
       finally { state.hostBusy = false; }
     }
     return;
@@ -1227,7 +1234,7 @@ async function hostController() {
     if (allSubmitted || gracePeriod) {
       state.hostBusy = true;
       try { await finishRound(room.roomCode, state.user); succeed(); }
-      catch (error) { console.error(error); fail(); }
+      catch (error) { console.error(error); fail(error); }
       finally { state.hostBusy = false; }
     }
     return;
@@ -1241,17 +1248,14 @@ async function hostController() {
       finally { state.hostBusy = false; }
       return;
     }
-
     const readyHumans = humans.filter((p) => p.ready);
-
     if (readyHumans.length === humans.length) {
       state.hostBusy = true;
       try { await sleep(800); await startRound(room.roomCode, state.user); succeed(); }
-      catch (error) { console.error(error); setRoomMessage(error.message || "Failed to start next round."); fail(); }
+      catch (error) { console.error(error); setRoomMessage(error.message || "Failed to start next round."); fail(error); }
       finally { state.hostBusy = false; }
       return;
     }
-
     const deadline = room.phaseEndsAt || ((room.updatedAt || 0) + READY_FALLBACK_MS);
     if (Date.now() > deadline) {
       state.hostBusy = true;
@@ -1265,7 +1269,7 @@ async function hostController() {
           await startRound(room.roomCode, state.user);
         }
         succeed();
-      } catch (error) { console.error(error); fail(); }
+      } catch (error) { console.error(error); fail(error); }
       finally { state.hostBusy = false; }
     }
   }
@@ -1273,12 +1277,14 @@ async function hostController() {
 
 async function loadAdminRoomSettings() {
   if (!state.room) { setAdminMessage("You are not in a room."); return; }
-  const minBet = $("#admin-room-min-bet"); if (minBet) minBet.value = state.room.settings.minBet;
-  const botLevel = $("#admin-room-bot-level"); if (botLevel) botLevel.value = state.room.settings.botLevel;
-  const arrangeTimer = $("#admin-room-arrange-timer"); if (arrangeTimer) arrangeTimer.value = state.room.settings.arrangeTimerSeconds;
-  const readyTimer = $("#admin-room-ready-timer"); if (readyTimer) readyTimer.value = state.room.settings.readyTimerSeconds;
-  const autoFill = $("#admin-room-auto-fill-bots"); if (autoFill) autoFill.checked = Boolean(state.room.settings.autoFillBots);
-  const scoopBonus = $("#admin-room-scoop-bonus"); if (scoopBonus) scoopBonus.checked = Boolean(state.room.settings.scoopBonus);
+  const minBet = $("#admin-room-min-bet");
+  if (minBet) minBet.value = String(state.room.settings.minBet);
+  const arrangeTimer = $("#admin-room-arrange-timer");
+  if (arrangeTimer) arrangeTimer.value = String(state.room.settings.arrangeTimerSeconds);
+  const autoFill = $("#admin-room-auto-fill-bots");
+  if (autoFill) autoFill.checked = Boolean(state.room.settings.autoFillBots);
+  const scoopBonus = $("#admin-room-scoop-bonus");
+  if (scoopBonus) scoopBonus.checked = Boolean(state.room.settings.scoopBonus);
 }
 
 function showAdminScreen() {
@@ -1309,28 +1315,21 @@ watchAuth((user) => {
   state.user = user;
   if (state.unsubUser) { state.unsubUser(); state.unsubUser = null; }
   if (state.unsubTransactions) { state.unsubTransactions(); state.unsubTransactions = null; state.transactions = []; }
-  
-  if (!user) { 
-    clearRoomState(); 
-    showScreen("login"); 
-    if (state.unsubPot) { state.unsubPot(); state.unsubPot = null; }
-    return; 
-  }
-  
+  if (state.unsubPot) { state.unsubPot(); state.unsubPot = null; }
+  if (!user) { clearRoomState(); showScreen("login"); return; }
   state.unsubUser = listenUser(user.username, (userData) => {
     state.userData = userData;
     renderMenu();
     renderReadyArea();
   });
-  
-  if (!state.unsubPot) {
-    state.unsubPot = listenHousePot((amount) => {
+  ensureHousePotChip();
+  if (housePotSupported()) {
+    state.unsubPot = dbApi.listenHousePot((amount) => {
       state.housePot = amount;
-      const potEl = document.getElementById("house-pot-amount");
-      if (potEl) potEl.textContent = formatCash(amount);
+      const el = document.getElementById("house-pot-amount");
+      if (el) el.textContent = formatCash(amount);
     });
   }
-  
   renderMenu();
   syncRoomsListener();
   if (state.roomId) enterRoom(state.roomId);
@@ -1359,6 +1358,7 @@ setInterval(() => {
   hostController();
 }, 700);
 
+// Heartbeat: keeps occupied tables alive (3-min sweep only kills abandoned ones)
 setInterval(() => {
   if (!state.room || !state.user) return;
   const inRoom = currentUserInRoomPlayers() || currentUserInRoomSpectators();
@@ -1387,10 +1387,10 @@ $("#create-room-button").addEventListener("click", async () => {
   setText("#create-room-error", "");
   if (!state.user || !state.userData) { setText("#create-room-error", "Not logged in."); return; }
   const settings = {
-    minBet: Number($("#create-min-bet").value) || 0,
-    arrangeTimerSeconds: Number($("#create-arrange-timer").value) || 0,
-    readyTimerSeconds: Number($("#create-ready-timer").value) || 0,
-    botLevel: $("#create-bot-level").value,
+    minBet: Number($("#create-min-bet")?.value) || 100000,
+    arrangeTimerSeconds: Number($("#create-arrange-timer")?.value) || 60,
+    readyTimerSeconds: FIXED_READY_TIMER_SECONDS,
+    botLevel: FIXED_BOT_LEVEL,
     autoFillBots: $("#create-auto-fill-bots").checked,
     scoopBonus: $("#create-scoop-bonus").checked,
     autoArrange: $("#create-auto-arrange").checked
@@ -1441,7 +1441,7 @@ if (joinGameResultsBtn) joinGameResultsBtn.addEventListener("click", handleJoinG
 $("#start-room-button").addEventListener("click", async () => { try { await startRound(state.roomId, state.user); } catch (error) { setRoomMessage(error.message || "Failed to start round."); } });
 $("#fill-bots-button").addEventListener("click", async () => { try { await fillBotsInRoom(state.roomId); } catch (error) { setRoomMessage(error.message || "Failed to fill bots."); } });
 $("#take-seat-button").addEventListener("click", async () => { try { await takeSeat(state.user, state.roomId, state.userData?.displayName || state.user.username); } catch (error) { setRoomMessage(error.message || "Failed to take seat."); } });
-$("#auto-arrange-button").addEventListener("click", () => { if (!state.handData || !state.handData.hand) return; state.arrangement = botArrangeHand(state.handData.hand, "hard"); state.selectedCards.clear(); renderArrangeSection(); });
+$("#auto-arrange-button").addEventListener("click", () => { if (!state.handData || !state.handData.hand) return; state.arrangement = botArrangeHand(state.handData.hand, FIXED_BOT_LEVEL); state.selectedCards.clear(); renderArrangeSection(); });
 $("#clear-arrangement-button").addEventListener("click", () => { autoPlaceFromHand(); renderArrangeSection(); });
 $("#submit-arrangement-button").addEventListener("click", async () => { await submitHumanArrangement(); });
 $("#ready-button").addEventListener("click", async () => { try { await setReady(state.roomId, state.user.uid, true); } catch (error) { setRoomMessage(error.message || "Failed to ready."); } });
@@ -1459,7 +1459,7 @@ $("#admin-load-player-button").addEventListener("click", async () => {
   if (!username) { setAdminMessage("Enter a username."); return; }
   const userData = await getUserData(username);
   if (!userData) { setText("#admin-player-info", "User not found."); return; }
-  setText("#admin-player-info", `Username: ${userData.username} | Cash: ${userData.cash} | Games: ${userData.games || 0} | Wins: ${userData.wins || 0} | Points: ${userData.points || 0}`);
+  setText("#admin-player-info", `Username: ${userData.username} | Cash: ${formatCash(userData.cash)} | Games: ${userData.games || 0} | Wins: ${userData.wins || 0} | Points: ${userData.points || 0}`);
   const nameField = $("#admin-display-name");
   if (nameField) nameField.value = userData.displayName || "";
 });
@@ -1502,10 +1502,10 @@ $("#admin-set-cash-button").addEventListener("click", async () => {
 $("#admin-save-room-button").addEventListener("click", async () => {
   if (!state.roomId) { setAdminMessage("You are not in a room."); return; }
   const settings = {
-    minBet: Number($("#admin-room-min-bet").value) || 0,
-    botLevel: $("#admin-room-bot-level").value,
-    arrangeTimerSeconds: Number($("#admin-room-arrange-timer").value) || 0,
-    readyTimerSeconds: Number($("#admin-room-ready-timer").value) || 0,
+    minBet: Number($("#admin-room-min-bet")?.value) || 100000,
+    arrangeTimerSeconds: Number($("#admin-room-arrange-timer")?.value) || 60,
+    readyTimerSeconds: FIXED_READY_TIMER_SECONDS,
+    botLevel: FIXED_BOT_LEVEL,
     autoFillBots: $("#admin-room-auto-fill-bots").checked,
     scoopBonus: $("#admin-room-scoop-bonus").checked
   };
@@ -1681,6 +1681,9 @@ document.addEventListener("click", (e) => {
   }
 });
 
+/* =========================================================
+   UI ENHANCEMENTS (swap FAB + exit buttons + HUD z-index)
+   ========================================================= */
 function injectExtraStyles() {
   if (document.getElementById("cardex-extra-styles")) return;
   const style = document.createElement("style");
