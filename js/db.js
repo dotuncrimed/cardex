@@ -21,6 +21,13 @@ export const DAILY_BOT_LIMIT = 10000000; // 10M max win from bots per day
 function roomRef(roomId) { return doc(db, "rooms", roomId); }
 function handRef(roomId, uid) { return doc(db, "rooms", roomId, "hands", uid); }
 function housePotRef() { return doc(db, "meta", "housePot"); }
+export const DAILY_BOT_LIMIT = 10000000; // 10M max win from bots per day
+
+export async function getHousePot() {
+  const snap = await getDoc(housePotRef());
+  return snap.exists() ? (Number(snap.data().amount) || 0) : 0;
+}
+function housePotRef() { return doc(db, "meta", "housePot"); }
 
 function generateRoomCode(length = 5) {
   let code = "";
@@ -550,7 +557,10 @@ export async function finishRound(roomId, user) {
 
     if (!alreadySettled) {
       const today = new Date().toISOString().slice(0, 10);
-      let housePotDelta = 0;
+      
+      // 🏦 HOUSE BANK LOGIC: Fetch current pot to act as the bankroll
+      let currentPot = await getHousePot(); 
+      let potNetChange = 0; 
 
       for (const ranking of results.rankings) {
         if (ranking.isBot) continue;
@@ -560,63 +570,57 @@ export async function finishRound(roomId, user) {
           continue;
         }
 
-        const netCoins = Number(ranking.netCoins) || 0;
-        const botDeltaOrig = Number(ranking.botNetCoins) || 0;
+        const humanDelta = Number(ranking.humanNetCoins) || 0;
+        const botDelta = Number(ranking.botNetCoins) || 0;
         
-        let finalDelta = netCoins; // Start with total calculated winnings/losses
-        let potAddition = 0;
+        let walletChange = humanDelta; // Human vs Human is paid directly
 
-        // 1) Human losses to bots flow into the House Pot
-        if (botDeltaOrig < 0) {
-          potAddition += Math.abs(botDeltaOrig);
-          // finalDelta remains negative, so the player's wallet is correctly deducted
-        }
-
-        // 2) Wins FROM bots are capped at 10M per day; the capped excess stays in the pot
-        if (botDeltaOrig > 0) {
+        // 📉 LOSSES TO BOTS (Feeds the House Pot)
+        if (botDelta < 0) {
+          walletChange += botDelta; 
+          potNetChange += Math.abs(botDelta); 
+          currentPot += Math.abs(botDelta); 
+        } 
+        // 📈 WINS FROM BOTS (Paid OUT of the House Pot)
+        else if (botDelta > 0) {
           const userData = await getUserData(ranking.username);
           let currentBotWins = 0;
           if (userData && userData.lastBotWinDate === today) {
             currentBotWins = Number(userData.dailyBotWinnings) || 0;
           }
-          const allowed = Math.max(0, DAILY_BOT_LIMIT - currentBotWins);
-          const actualBotWin = Math.min(botDeltaOrig, allowed);
-
-          if (actualBotWin < botDeltaOrig) {
-            potAddition += (botDeltaOrig - actualBotWin);
-          }
           
-          // Adjust finalDelta to only include the allowed bot win
-          finalDelta = netCoins - botDeltaOrig + actualBotWin;
-
-          if (actualBotWin > 0) {
+          // 1. Enforce 10M Daily Cap
+          const allowedByCap = Math.max(0, DAILY_BOT_LIMIT - currentBotWins);
+          const cappedWin = Math.min(botDelta, allowedByCap);
+          
+          // 2. Enforce Pot Bankruptcy Rule (Cannot pay more than the pot holds)
+          const actualPayout = Math.min(cappedWin, currentPot);
+          
+          walletChange += actualPayout;
+          potNetChange -= actualPayout;
+          currentPot -= actualPayout; // Deplete the running pot for the next player
+          
+          if (actualPayout > 0) {
             await updateDoc(doc(db, "users", ranking.username), {
-              dailyBotWinnings: increment(actualBotWin),
+              dailyBotWinnings: increment(actualPayout),
               lastBotWinDate: today
             });
           }
         }
 
-        // DEBUG LOG: Watch this in your browser console to verify the math!
-        console.log(`[SETTLE] ${ranking.username}: net=${netCoins}, botOrig=${botDeltaOrig}, finalDelta=${finalDelta}, potAdd=${potAddition}`);
-
-        if (finalDelta !== 0) {
-          await adjustCash(ranking.username, finalDelta, "game_settle",
+        if (walletChange !== 0) {
+          await adjustCash(ranking.username, walletChange, "game_settle",
             `Room ${roomId} round ${results.roundNumber}`, user.username);
-        }
-
-        if (potAddition > 0) {
-            housePotDelta += potAddition;
         }
 
         await updateUserStats(ranking.username, ranking.scorePoints,
           ranking.overallRank === 1 && ranking.scorePoints > 0);
       }
 
-      // 3) Push the round's losses into the House Pot document
-      if (housePotDelta !== 0) {
+      // 💾 Save the final House Pot balance to Firestore
+      if (potNetChange !== 0) {
         await setDoc(housePotRef(), {
-          amount: increment(housePotDelta),
+          amount: increment(potNetChange),
           updatedAt: Date.now()
         }, { merge: true });
       }
