@@ -45,7 +45,22 @@ border: 1px solid rgba(255, 255, 255, 0.14);
 border-radius: 16px;
 padding: 18px;
 }
+/* Locked (non-editable) setting labels */
+.fixed-setting {
+padding: 10px;
+border-radius: 10px;
+border: 1px dashed rgba(255, 255, 255, 0.25);
+background: rgba(255, 255, 255, 0.04);
+color: rgba(255, 255, 255, 0.7);
+font-size: 14px;
+font-weight: 700;
+}
 </style>
+<!-- ============================================================ -->
+<!-- CARDEX START PAGE — scoped entirely under #login-screen so    -->
+<!-- it never touches menu-screen / room-screen / admin-screen,    -->
+<!-- which share some of the same class names (.fp-wrap, .mini…). -->
+<!-- ============================================================ -->
 <style id="cardex-login-styles">
 #login-screen,
 #login-screen *,
@@ -66,6 +81,7 @@ box-sizing: border-box;
 --cx-claret: #8c2f39;
 --cx-claret-bright: #d17b84;
 }
+/* ---------- stage / atmosphere ---------- */
 #login-screen .cardex-stage {
 position: relative;
 width: 100%;
@@ -128,6 +144,7 @@ animation: cx-drift 50s ease-in-out infinite;
 0%, 100% { transform: translate(0, 0) rotate(0deg); }
 50%      { transform: translate(14px, -20px) rotate(5deg); }
 }
+/* ---------- panel ---------- */
 #login-screen .fp-wrap {
 position: relative;
 z-index: 2;
@@ -163,6 +180,7 @@ pointer-events: none;
 from { opacity: 0; transform: translateY(18px) scale(0.98); }
 to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+/* ---------- dealt hand / wordmark ---------- */
 #login-screen .fp-logo {
 text-align: center;
 margin-bottom: 24px;
@@ -258,6 +276,7 @@ font-weight: 500;
 font-size: 0.98rem;
 color: var(--cx-parchment-dim);
 }
+/* ---------- form ---------- */
 #login-screen .form-group {
 margin-bottom: 16px;
 text-align: left;
@@ -304,6 +323,7 @@ border-color: var(--cx-brass);
 background: rgba(5, 14, 9, 0.75);
 box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.16), 0 0 24px rgba(201, 162, 39, 0.12);
 }
+/* ---------- CTA ---------- */
 #login-screen .btn-primary {
 position: relative;
 overflow: hidden;
@@ -349,6 +369,7 @@ transition: left 520ms ease;
 #login-screen .btn-primary:hover::after {
 left: 130%;
 }
+/* ---------- error ---------- */
 #login-screen .error {
 margin-top: 12px;
 text-align: center;
@@ -370,6 +391,7 @@ animation: cx-shake 420ms ease;
 60% { transform: translateX(-3px); }
 80% { transform: translateX(3px); }
 }
+/* ---------- footer ---------- */
 #login-screen .fp-foot {
 margin-top: 20px;
 display: flex;
@@ -385,6 +407,7 @@ color: rgba(205, 191, 158, 0.45);
 color: var(--cx-brass-dim);
 font-size: 0.6rem;
 }
+/* ---------- responsive & motion ---------- */
 @media (max-width: 480px) {
 #login-screen .fp-panel { padding: 34px 22px 24px; max-width: 360px; }
 #login-screen .fp-title { font-size: 2rem; }
@@ -481,9 +504,6 @@ Login / Register
 <div class="fp-cash-chip">
 $ <span id="menu-cash">0</span>
 </div>
-<div class="fp-cash-chip" style="background: rgba(156, 39, 176, 0.4); margin-top: 6px;">
-🏆 House Pot: $ <span id="house-pot-amount">0</span>
-</div>
 </div>
 </div>
 <div id="menu-message" class="message"></div>
@@ -515,23 +535,35 @@ Logout
 <h3>Create Room</h3>
 <div class="form-group">
 <label for="create-min-bet">Minimum Bet</label>
-<input id="create-min-bet" type="number" value="100" />
-</div>
-<div class="form-group">
-<label for="create-arrange-timer">Arrange Timer (sec)</label>
-<input id="create-arrange-timer" type="number" value="60" />
-</div>
-<div class="form-group">
-<label for="create-ready-timer">Ready Timer (sec)</label>
-<input id="create-ready-timer" type="number" value="15" />
-</div>
-<div class="form-group">
-<label for="create-bot-level">Bot Level</label>
-<select id="create-bot-level">
-<option value="easy">Easy</option>
-<option value="normal" selected>Normal</option>
-<option value="hard">Hard</option>
+<select id="create-min-bet">
+<option value="100">100</option>
+<option value="1000">1K</option>
+<option value="10000">10K</option>
+<option value="50000">50K</option>
+<option value="100000" selected>100K</option>
+<option value="500000">500K</option>
+<option value="1000000">1M</option>
+<option value="5000000">5M</option>
+<option value="10000000">10M</option>
+<option value="50000000">50M</option>
+<option value="100000000">100M</option>
 </select>
+</div>
+<div class="form-group">
+<label for="create-arrange-timer">Arrange Timer</label>
+<select id="create-arrange-timer">
+<option value="30">30 Seconds</option>
+<option value="60" selected>60 Seconds</option>
+<option value="90">90 Seconds</option>
+</select>
+</div>
+<div class="form-group">
+<label>Ready Timer</label>
+<div class="fixed-setting">🔒 Fixed: 30 seconds</div>
+</div>
+<div class="form-group">
+<label>Bot Difficulty</label>
+<div class="fixed-setting">🔒 Fixed: Hard</div>
 </div>
 <label class="fp-check">
 <input id="create-auto-fill-bots" type="checkbox" checked />
@@ -580,7 +612,7 @@ Cancel
 </div>
 <div id="lobby-rooms-list" class="lobby-rooms-list"></div>
 <div class="fp-lobby-hint">
-Idle tables auto-close after 15 minutes
+Idle tables auto-close after 3 minutes
 </div>
 </div>
 </div>
@@ -647,7 +679,7 @@ Pot:
 </div>
 <div>
 Bot Level:
-<span id="room-bot-level">normal</span>
+<span id="room-bot-level">hard</span>
 </div>
 <div>
 Timer:
@@ -804,8 +836,8 @@ Join Game
 </button>
 </div>
 </div>
-</div>  <!-- ✅ FIX: closes .pg-table -->
-</div>    <!-- ✅ FIX: closes #room-screen -->
+</div>
+</div>
 <!-- ADMIN SCREEN -->
 <div id="admin-screen" class="screen hidden">
 <div class="panel wide-panel">
@@ -868,23 +900,35 @@ Set Cash
 <h3>Current Room Settings</h3>
 <div class="form-group">
 <label for="admin-room-min-bet">Minimum Bet</label>
-<input id="admin-room-min-bet" type="number" />
-</div>
-<div class="form-group">
-<label for="admin-room-bot-level">Bot Level</label>
-<select id="admin-room-bot-level">
-<option value="easy">Easy</option>
-<option value="normal">Normal</option>
-<option value="hard">Hard</option>
+<select id="admin-room-min-bet">
+<option value="100">100</option>
+<option value="1000">1K</option>
+<option value="10000">10K</option>
+<option value="50000">50K</option>
+<option value="100000">100K</option>
+<option value="500000">500K</option>
+<option value="1000000">1M</option>
+<option value="5000000">5M</option>
+<option value="10000000">10M</option>
+<option value="50000000">50M</option>
+<option value="100000000">100M</option>
 </select>
 </div>
 <div class="form-group">
-<label for="admin-room-arrange-timer">Arrange Timer Seconds</label>
-<input id="admin-room-arrange-timer" type="number" />
+<label for="admin-room-arrange-timer">Arrange Timer</label>
+<select id="admin-room-arrange-timer">
+<option value="30">30 Seconds</option>
+<option value="60">60 Seconds</option>
+<option value="90">90 Seconds</option>
+</select>
 </div>
 <div class="form-group">
-<label for="admin-room-ready-timer">Ready Timer Seconds</label>
-<input id="admin-room-ready-timer" type="number" />
+<label>Ready Timer</label>
+<div class="fixed-setting">🔒 Fixed: 30 seconds</div>
+</div>
+<div class="form-group">
+<label>Bot Difficulty</label>
+<div class="fixed-setting">🔒 Fixed: Hard</div>
 </div>
 <label class="fp-check">
 <input id="admin-room-auto-fill-bots" type="checkbox" checked />
@@ -947,7 +991,6 @@ Cancel
 <div id="transaction-history" class="tx-list"></div>
 </div>
 </div>
-</div>  <!-- ✅ FIX: closes #app -->
 <!-- APP ENTRY POINT -->
 <script type="module" src="./js/app.js"></script>
 <!-- FEATURE 1: LEADERBOARDS -->
@@ -956,4 +999,3 @@ Cancel
 <script type="module" src="./js/emoji.js"></script>
 </body>
 </html>
-
