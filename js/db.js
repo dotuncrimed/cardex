@@ -21,8 +21,6 @@ export const DAILY_BOT_LIMIT = 10000000; // 10M max win from bots per day
 function roomRef(roomId) { return doc(db, "rooms", roomId); }
 function handRef(roomId, uid) { return doc(db, "rooms", roomId, "hands", uid); }
 function housePotRef() { return doc(db, "meta", "housePot"); }
-export const DAILY_BOT_LIMIT = 10000000; // 10M max win from bots per day
-
 export async function getHousePot() {
   const snap = await getDoc(housePotRef());
   return snap.exists() ? (Number(snap.data().amount) || 0) : 0;
