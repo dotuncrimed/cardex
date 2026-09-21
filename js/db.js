@@ -76,6 +76,12 @@ export function listenUser(username, callback) {
 }
 
 /* ============ HOUSE POT ============ */
+export function listenHousePot(callback) {
+  return onSnapshot(housePotRef(), (snap) => {
+    callback(snap.exists() ? (Number(snap.data().amount) || 0) : 0);
+  });
+}
+
 export async function getHousePot() {
   const snap = await getDoc(housePotRef());
   return snap.exists() ? (Number(snap.data().amount) || 0) : 0;
@@ -481,6 +487,7 @@ async function updateUserStats(username, points, isWinner) {
   });
 }
 
+/* ============ HOUSE BANK SETTLEMENT LOGIC ============ */
 export async function finishRound(roomId, user) {
   const room = await getRoom(roomId);
   if (!room) return;
@@ -546,11 +553,10 @@ export async function finishRound(roomId, user) {
       const today = new Date().toISOString().slice(0, 10);
       const minBet = Number(room.settings.minBet) || 0;
       
-      // Build player map for quick lookup
       const playerMap = {};
       room.players.forEach(p => { playerMap[p.uid] = p; });
 
-      // 🏦 HOUSE BANK LOGIC: Fetch current pot to act as the bankroll
+      // 🏦 HOUSE BANK LOGIC
       let currentPot = await getHousePot(); 
       let potNetChange = 0; 
 
@@ -562,7 +568,6 @@ export async function finishRound(roomId, user) {
           continue;
         }
 
-        // 🕵️ BULLETPROOF CALCULATION: Calculate human/bot deltas directly from details
         let humanDelta = 0;
         let botDelta = 0;
         const myDetails = results.details[ranking.uid] || [];
@@ -575,7 +580,7 @@ export async function finishRound(roomId, user) {
           else humanDelta += coins;
         });
 
-        let walletChange = humanDelta; // Human vs Human is paid directly from wallets
+        let walletChange = humanDelta; 
 
         // 📉 LOSSES TO BOTS (Feeds the House Pot)
         if (botDelta < 0) {
@@ -595,12 +600,12 @@ export async function finishRound(roomId, user) {
           const allowedByCap = Math.max(0, DAILY_BOT_LIMIT - currentBotWins);
           const cappedWin = Math.min(botDelta, allowedByCap);
           
-          // 2. Enforce Pot Bankruptcy Rule (Cannot pay more than the pot holds)
+          // 2. Enforce Pot Bankruptcy Rule
           const actualPayout = Math.min(cappedWin, currentPot);
           
           walletChange += actualPayout;
           potNetChange -= actualPayout;
-          currentPot -= actualPayout; // Deplete the running pot for the next player
+          currentPot -= actualPayout; 
           
           if (actualPayout > 0) {
             await updateDoc(doc(db, "users", ranking.username), {
@@ -619,7 +624,6 @@ export async function finishRound(roomId, user) {
           ranking.overallRank === 1 && ranking.scorePoints > 0);
       }
 
-      // 💾 Save the final House Pot balance to Firestore
       if (potNetChange !== 0) {
         await setDoc(housePotRef(), {
           amount: increment(potNetChange),
