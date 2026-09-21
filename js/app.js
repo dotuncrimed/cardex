@@ -11,7 +11,8 @@ import {
   fillBotsInRoom, replaceUnreadyWithBots, updateRoomSettings, getUserData,
   adjustCash, setCash, updateDisplayName, addAdminLog, listenAllUsers,
   listenAllRooms, spectateRoom, sweepStaleRooms, claimDailyBonus, transferCash,
-  heartbeatRoom, deleteRoomFully, enforceReadyDeadline, READY_FALLBACK_MS
+  heartbeatRoom, deleteRoomFully, enforceReadyDeadline, READY_FALLBACK_MS,
+  listenHousePot
 } from "./db.js";
 
 const state = {
@@ -27,6 +28,8 @@ const state = {
   unsubRoom: null,
   unsubHand: null,
   unsubUser: null,
+  unsubPot: null,
+  housePot: 0,
   adminLoggedIn: sessionStorage.getItem("adminLoggedIn") === "true",
   hostBusy: false,
   hostCooldownUntil: 0,
@@ -62,10 +65,10 @@ function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function formatCash(n) {
   n = Number(n) || 0;
   const abs = Math.abs(n);
-const sign = n < 0 ? "-" : "";
-if (abs >= 1e12) return sign + (abs / 1e12).toFixed(2) + "T";
-if (abs >= 1e9) return sign + (abs / 1e9).toFixed(2) + "B";
-if (abs >= 1e6) return sign + (abs / 1e6).toFixed(2) + "M";
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 1e12) return sign + (abs / 1e12).toFixed(2) + "T";
+  if (abs >= 1e9) return sign + (abs / 1e9).toFixed(2) + "B";
+  if (abs >= 1e6) return sign + (abs / 1e6).toFixed(2) + "M";
   if (abs >= 1e3) return sign + (abs / 1e3).toFixed(1) + "K";
   return sign + String(abs);
 }
@@ -371,12 +374,29 @@ async function enterRoom(roomId) {
   showScreen("room");
 }
 
+function injectHousePotChip() {
+  if (document.getElementById("house-pot-chip")) return;
+  const head = document.querySelector(".fp-menu-head > div:last-child") || document.querySelector(".fp-menu-head");
+  if (head) {
+    const chip = document.createElement("div");
+    chip.id = "house-pot-chip";
+    chip.className = "fp-cash-chip";
+    chip.style.background = "rgba(156, 39, 176, 0.4)";
+    chip.style.marginTop = "6px";
+    chip.innerHTML = '🏆 House Pot: $ <span id="house-pot-amount">0</span>';
+    head.appendChild(chip);
+  }
+}
+
 function renderMenu() {
   if (!state.user) return;
   setText("#menu-username", state.userData?.displayName || state.user.username);
-  setText("#menu-cash", state.userData?.cash ?? 0);
+  const menuCashEl = $("#menu-cash");
+  if (menuCashEl) menuCashEl.textContent = formatCash(state.userData?.cash ?? 0);
+  
   const avatarEl = $("#menu-avatar");
   if (avatarEl) avatarEl.textContent = (state.userData?.displayName || state.user.username || "?").charAt(0).toUpperCase();
+  
   const claimBtn = $("#claim-daily-button");
   if (claimBtn) {
     const today = new Date().toISOString().slice(0, 10);
@@ -384,6 +404,10 @@ function renderMenu() {
     claimBtn.disabled = claimed;
     claimBtn.textContent = claimed ? "✓ Claimed — back tomorrow" : "🎁 Claim Daily +10,000";
   }
+  
+  injectHousePotChip();
+  const potEl = document.getElementById("house-pot-amount");
+  if (potEl) potEl.textContent = formatCash(state.housePot || 0);
 }
 
 function renderSeats() {
@@ -512,7 +536,8 @@ function renderRoomInfo() {
   }
   setText("#pg-round", "Round " + (state.room.roundNumber || 0));
   setText("#pg-pot", "1 pt = " + (state.room.settings.minBet || 0));
-  setText("#hud-cash", state.userData?.cash ?? 0);
+  const hudCash = $("#hud-cash");
+  if (hudCash) hudCash.textContent = formatCash(state.userData?.cash ?? 0);
 }
 
 function renderLobbySection() {
@@ -681,7 +706,6 @@ function finalizeReveal() {
   const readyArea = document.getElementById("ready-area");
   if (readyArea) readyArea.classList.remove("hidden");
 
-  // Coin fly to winner (once per round)
   if (state.room && state.room.results && state.coinsFlyedFor !== state.room.roundNumber) {
     const winner = state.room.results.rankings && state.room.results.rankings[0];
     if (winner) flyCoinsToWinner(winner.uid);
@@ -1224,7 +1248,6 @@ async function hostController() {
   }
 
   if (room.status === "round_end") {
-    // Bot-only table: kill it immediately
     if (humans.length === 0) {
       state.hostBusy = true;
       try { await deleteRoomFully(room.roomCode, room.players); }
@@ -1235,7 +1258,6 @@ async function hostController() {
 
     const readyHumans = humans.filter((p) => p.ready);
 
-    // Everyone ready: start next round
     if (readyHumans.length === humans.length) {
       state.hostBusy = true;
       try { await sleep(800); await startRound(room.roomCode, state.user); succeed(); }
@@ -1244,7 +1266,6 @@ async function hostController() {
       return;
     }
 
-    // Ready deadline passed: kick unready players (host included)
     const deadline = room.phaseEndsAt || ((room.updatedAt || 0) + READY_FALLBACK_MS);
     if (Date.now() > deadline) {
       state.hostBusy = true;
@@ -1302,12 +1323,28 @@ watchAuth((user) => {
   state.user = user;
   if (state.unsubUser) { state.unsubUser(); state.unsubUser = null; }
   if (state.unsubTransactions) { state.unsubTransactions(); state.unsubTransactions = null; state.transactions = []; }
-  if (!user) { clearRoomState(); showScreen("login"); return; }
+  
+  if (!user) { 
+    clearRoomState(); 
+    showScreen("login"); 
+    if (state.unsubPot) { state.unsubPot(); state.unsubPot = null; }
+    return; 
+  }
+  
   state.unsubUser = listenUser(user.username, (userData) => {
     state.userData = userData;
     renderMenu();
     renderReadyArea();
   });
+  
+  if (!state.unsubPot) {
+    state.unsubPot = listenHousePot((amount) => {
+      state.housePot = amount;
+      const potEl = document.getElementById("house-pot-amount");
+      if (potEl) potEl.textContent = formatCash(amount);
+    });
+  }
+  
   renderMenu();
   syncRoomsListener();
   if (state.roomId) enterRoom(state.roomId);
@@ -1336,7 +1373,6 @@ setInterval(() => {
   hostController();
 }, 700);
 
-// Heartbeat: keeps occupied tables alive (3-min sweep only kills abandoned ones)
 setInterval(() => {
   if (!state.room || !state.user) return;
   const inRoom = currentUserInRoomPlayers() || currentUserInRoomSpectators();
@@ -1659,9 +1695,6 @@ document.addEventListener("click", (e) => {
   }
 });
 
-/* =========================================================
-   UI ENHANCEMENTS (swap FAB + exit buttons + HUD z-index)
-   ========================================================= */
 function injectExtraStyles() {
   if (document.getElementById("cardex-extra-styles")) return;
   const style = document.createElement("style");
@@ -1713,6 +1746,3 @@ function setupExitButtons() {
 
 injectExtraStyles();
 setTimeout(() => { setupSwapFab(); setupExitButtons(); }, 500);
-
-
-
