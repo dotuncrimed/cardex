@@ -40,6 +40,11 @@ const state = {
   hostFailCount: 0,
   autoSubmitting: false,
   autoSubmitFailUntil: 0,
+  /* Auto-arrange interlock: max 3 tries per round, 10s cooldown */
+  autoArrangeBusy: false,
+  autoArrangeFor: null,
+  autoArrangeTries: 0,
+  autoArrangeFailUntil: 0,
   lastHeartbeatSent: 0,
   selectedCard: null,
   selectedPos: null,
@@ -66,6 +71,11 @@ const state = {
 function $(selector) { return document.querySelector(selector); }
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
+/* Haptic feedback helper (mobile). Safe no-op on unsupported devices. */
+function buzz(ms) {
+  try { if (navigator.vibrate) navigator.vibrate(ms || 10); } catch (e) {}
+}
+
 function formatCash(n) {
   n = Number(n) || 0;
   const abs = Math.abs(n);
@@ -91,6 +101,7 @@ function showScreen(name) {
 
 function setRoomMessage(message) { setText("#room-message", message || ""); }
 function setAdminMessage(message) { setText("#admin-message", message || ""); }
+
 function emptyArrangement() { return { front: [], middle: [], back: [] }; }
 
 function statusInfo(status) {
@@ -112,28 +123,34 @@ function timeAgo(ts) {
 function assignedCardsSet() {
   return new Set([...state.arrangement.front, ...state.arrangement.middle, ...state.arrangement.back]);
 }
+
 function currentUserInRoomPlayers() {
   if (!state.room || !state.user) return false;
   return state.room.players.some((player) => player.uid === state.user.uid);
 }
+
 function currentUserInRoomSpectators() {
   if (!state.room || !state.user) return false;
   return state.room.spectators.some((spectator) => spectator.uid === state.user.uid);
 }
+
 function currentUserPlayerObject() {
   if (!state.room || !state.user) return null;
   return state.room.players.find((player) => player.uid === state.user.uid) || null;
 }
+
 function isHost() { return Boolean(state.room && state.user && state.room.hostId === state.user.uid); }
 
 function clearRoomListeners() {
   if (state.unsubRoom) { state.unsubRoom(); state.unsubRoom = null; }
   if (state.unsubHand) { state.unsubHand(); state.unsubHand = null; }
 }
+
 function clearRevealTimers() {
   (state.revealTimers || []).forEach(clearTimeout);
   state.revealTimers = [];
 }
+
 function clearRoomState() {
   clearRoomListeners();
   Object.values(state.cashListeners || {}).forEach((un) => un && un());
@@ -450,11 +467,9 @@ function renderSpectatorBar() {
   const specs = (state.room && state.room.spectators) || [];
   if (specs.length === 0) { bar.classList.add("hidden"); bar.innerHTML = ""; return; }
   bar.classList.remove("hidden");
-
   const MAX = 6;
   const shown = specs.slice(0, MAX);
   const extra = specs.length - shown.length;
-
   const avatars = shown.map((s) => {
     const isMe = Boolean(state.user && s.uid === state.user.uid);
     const cls = "spec-avatar" + (s.kickedForNotReady ? " kicked" : "") + (isMe ? " me" : "");
@@ -462,26 +477,20 @@ function renderSpectatorBar() {
     const title = (s.displayName || s.username || "?") + (isMe ? " (You)" : "") + (s.kickedForNotReady ? " — kicked: not ready" : "");
     return `<div class="${cls}" id="${safeDomId("spec-av-", s.uid)}" title="${escapeHtml(title)}">${escapeHtml(label)}</div>`;
   }).join("");
-
-  // Hidden anchors: give overflow spectators a real on-screen box so emoji
-  // flights still originate from the gallery instead of the table center.
   const hiddenAnchors = specs.slice(MAX).map((s) =>
     `<span class="spec-anchor" id="${safeDomId("spec-av-", s.uid)}" aria-hidden="true"></span>`
   ).join("");
-
   const more = extra > 0
     ? `<div class="spec-avatar more" title="${escapeHtml(specs.slice(MAX).map((s) => s.displayName || s.username).join(", "))}">+${extra}</div>`
     : "";
-
   const names = specs.map((s) => {
     const isMe = Boolean(state.user && s.uid === state.user.uid);
     return `<div class="spec-name${s.kickedForNotReady ? " kicked" : ""}">${escapeHtml(s.displayName || s.username || "?")}${isMe ? " (You)" : ""}${s.kickedForNotReady ? " · kicked" : ""}</div>`;
   }).join("");
-
   bar.innerHTML =
     `<button id="spectator-toggle" class="spec-chip" type="button">` +
-      `<span class="spec-eye">👁</span>` +
-      `<span class="spec-count">${specs.length} watching</span>` +
+    `<span class="spec-eye">👁</span>` +
+    `<span class="spec-count">${specs.length} watching</span>` +
     `</button>` +
     `<div class="spec-avatars">${avatars}${hiddenAnchors}${more}</div>` +
     `<div id="spectator-names" class="spec-list hidden">${names}</div>`;
@@ -625,15 +634,20 @@ function renderLobbySection() {
   renderPlayerList();
 }
 
+/* ============================================================
+   FIXED: Middle-beats-Front gauge (row label warnings).
+   Front trips now requires Middle >= Three of a Kind
+   (evaluate5 category 4), and the trips tiebreak is checked.
+   ============================================================ */
 function middleBeatsFront(arr) {
   if (arr.front.length !== 3 || arr.middle.length !== 5) return null;
   const f = evaluate3(arr.front);
   const m = evaluate5(arr.middle);
-  const req = f.category === 3 ? 3 : f.category === 2 ? 2 : 1;
-  if (m.category < req) return false;
-  // Same category: the pair / high-card rank must also match up
-  if (m.category === req && f.category === 1 && m.tiebreakers[0] < f.tiebreakers[0]) return false;
-  if (m.category === req && f.category === 2 && m.tiebreakers[0] < f.tiebreakers[0]) return false;
+  const required = f.category === 3 ? 4 : f.category === 2 ? 2 : 1;
+  if (m.category < required) return false;
+  if (f.category === 1 && m.category === 1 && m.tiebreakers[0] < f.tiebreakers[0]) return false;
+  if (f.category === 2 && m.category === 2 && m.tiebreakers[0] < f.tiebreakers[0]) return false;
+  if (f.category === 3 && m.category === 4 && m.tiebreakers[0] < f.tiebreakers[0]) return false;
   return true;
 }
 
@@ -644,7 +658,6 @@ function backBeatsMiddle(arr) {
 
 function rowLabelInfo(row) {
   const arr = state.arrangement;
-
   if (row === "front") {
     const complete = arr.front.length === 3;
     const ev = complete ? evaluate3(arr.front) : null;
@@ -656,7 +669,6 @@ function rowLabelInfo(row) {
       note: foul ? "Too strong for Middle" : ""
     };
   }
-
   if (row === "middle") {
     const complete = arr.middle.length === 5;
     const ev = complete ? evaluate5(arr.middle) : null;
@@ -673,7 +685,6 @@ function rowLabelInfo(row) {
       note
     };
   }
-
   const complete = arr.back.length === 5;
   const ev = complete ? evaluate5(arr.back) : null;
   const bvm = backBeatsMiddle(arr);
@@ -687,7 +698,7 @@ function rowLabelInfo(row) {
 
 function onMyCardTap(row, index) {
   const card = state.arrangement[row][index];
-  if (state.selectedCard === null) { state.selectedCard = card; state.selectedPos = { row, index }; renderMyRows(); return; }
+  if (state.selectedCard === null) { state.selectedCard = card; state.selectedPos = { row, index }; buzz(8); renderMyRows(); return; }
   if (state.selectedCard === card) { state.selectedCard = null; state.selectedPos = null; renderMyRows(); return; }
   const from = state.selectedPos;
   const a = state.arrangement[from.row][from.index];
@@ -696,6 +707,7 @@ function onMyCardTap(row, index) {
   state.arrangement[row][index] = a;
   state.selectedCard = null;
   state.selectedPos = null;
+  buzz(12);
   renderMyRows();
 }
 
@@ -734,7 +746,7 @@ function renderMyRows() {
         `<span class="check">${info.ok ? "✓" : "✗"}</span>` +
         `<span class="hand-name">${info.name}</span>` +
         (info.note
-          ? `<span class="foul-note" style="display:block;font-size:10px;font-weight:800;color:#ff8a80;">${info.note}</span>`
+          ? `<span class="foul-note" style="display:block;font-size:10px;font-weight:800;color:var(--red,#E11D48);">${info.note}</span>`
           : "");
     }
   });
@@ -794,9 +806,18 @@ function updateScorePanel(results, myUid, revealedRows) {
   if (tEl) tEl.textContent = revealedRows.length ? ((total >= 0 ? "+" : "") + total) : "";
 }
 
+function markRevealSeen() {
+  try {
+    if (state.roomId && state.room) {
+      sessionStorage.setItem("cardex_reveal_" + state.roomId + "_" + state.room.roundNumber, "1");
+    }
+  } catch (e) {}
+}
+
 function finalizeReveal() {
   state.revealActive = false;
   state.revealPlayedFor = state.room ? state.room.roundNumber : null;
+  markRevealSeen();
   const skip = document.getElementById("reveal-skip");
   if (skip) skip.classList.add("hidden");
   const readyArea = document.getElementById("ready-area");
@@ -933,19 +954,28 @@ function renderHandCards() {
   });
 }
 
+/* ============================================================
+   FIXED: Auto-arrange interlock.
+   Max 3 attempts per round, 10s cooldown between failures.
+   After 3 failures, falls through to manual arrangement UI
+   instead of hammering Firestore on every snapshot.
+   ============================================================ */
 function renderArrangeSection() {
   const autoBtn = $("#auto-arrange-button");
   if (autoBtn && state.room) autoBtn.classList.toggle("hidden", !state.room.settings.autoArrange);
+
   const zoom = document.getElementById("zoom-view");
   const tableSec = document.getElementById("arrange-section");
   if (!zoom || !tableSec) return;
   const st = $("#arrange-status");
+
   if (!state.handData) {
     if (st) st.textContent = "Waiting for cards...";
     zoom.classList.add("hidden");
     tableSec.classList.remove("hidden");
     return;
   }
+
   if (state.handData.submitted) {
     zoom.classList.add("hidden");
     tableSec.classList.remove("hidden");
@@ -954,24 +984,43 @@ function renderArrangeSection() {
     renderTableMyRows();
     return;
   }
+
   if (state.room.settings.autoArrange) {
-    zoom.classList.add("hidden");
-    tableSec.classList.remove("hidden");
-    if (st) st.textContent = "Auto-arranging your cards...";
-    disableArrangeControls(true);
-    renderTableMyRows();
-    setTimeout(async () => {
-      const arrangement = botArrangeHand(state.handData.hand, FIXED_BOT_LEVEL);
-      try {
-        await submitArrangement(state.roomId, state.user.uid, arrangement);
-        setRoomMessage("Cards auto-arranged and submitted!");
-      } catch (error) {
-        console.error(error);
-        setRoomMessage("Auto-arrange failed.");
+    const round = state.room.roundNumber;
+    const exhausted = (state.autoArrangeTries || 0) >= 3;
+    const coolingDown = Date.now() < (state.autoArrangeFailUntil || 0);
+    const eligible = !state.autoArrangeBusy && !exhausted && !coolingDown && state.autoArrangeFor !== round;
+
+    if (state.autoArrangeBusy || eligible) {
+      zoom.classList.add("hidden");
+      tableSec.classList.remove("hidden");
+      if (st) st.textContent = "Auto-arranging your cards...";
+      disableArrangeControls(true);
+      renderTableMyRows();
+      if (eligible) {
+        state.autoArrangeFor = round;
+        state.autoArrangeBusy = true;
+        setTimeout(async () => {
+          try {
+            const arrangement = botArrangeHand(state.handData.hand, FIXED_BOT_LEVEL);
+            await submitArrangement(state.roomId, state.user.uid, arrangement);
+            setRoomMessage("Cards auto-arranged and submitted!");
+          } catch (error) {
+            console.error(error);
+            state.autoArrangeTries = (state.autoArrangeTries || 0) + 1;
+            state.autoArrangeFailUntil = Date.now() + 10000;
+            state.autoArrangeFor = null; // allow retry after cooldown
+            setRoomMessage("Auto-arrange failed — retrying.");
+          } finally {
+            state.autoArrangeBusy = false;
+          }
+        }, 600);
       }
-    }, 600);
-    return;
+      return;
+    }
+    /* Exhausted or cooling down: fall through to manual UI below */
   }
+
   if (state.zoomOpen) {
     tableSec.classList.add("hidden");
     zoom.classList.remove("hidden");
@@ -997,6 +1046,7 @@ async function submitHumanArrangement() {
   if (isFouled) setRoomMessage("FOUL! Your arrangement is illegal. You will auto-lose this round.");
   try {
     await submitArrangement(state.roomId, state.user.uid, arrangement, isFouled);
+    buzz(15);
     setRoomMessage(isFouled ? "Fouled arrangement submitted." : "Submitted.");
   } catch (error) {
     console.error(error);
@@ -1021,7 +1071,8 @@ async function autoSubmitIfNeeded() {
       const fouled = !isLegalArrangement(arrangement);
       await submitArrangement(state.roomId, state.user.uid, arrangement, fouled);
     } else {
-      const fixed = botArrangeHand(state.handData.hand, "normal");
+      /* FIXED: use the locked bot level instead of "normal" */
+      const fixed = botArrangeHand(state.handData.hand, FIXED_BOT_LEVEL);
       await submitArrangement(state.roomId, state.user.uid, fixed, false);
     }
   } catch (error) {
@@ -1237,6 +1288,11 @@ function renderRoom() {
     state.revealPlayedFor = null;
     state.dealAnimPlayedFor = null;
     state.showFullResults = false;
+    /* Reset auto-arrange interlock for the new round */
+    state.autoArrangeTries = 0;
+    state.autoArrangeFor = null;
+    state.autoArrangeFailUntil = 0;
+    state.autoArrangeBusy = false;
   }
   if (state.lastStatus && state.lastStatus !== state.room.status) {
     if (state.lastStatus === "arranging" && state.room.status === "scoring") showBanner("Start Comparing", 1600);
@@ -1263,12 +1319,17 @@ function renderRoom() {
   renderLobbySection();
   manageHandListener();
   if (state.room.status === "round_end") {
-    if (state.room.results && state.revealPlayedFor !== state.room.roundNumber && !state.revealActive) {
+    /* FIXED: don't replay the reveal after a refresh */
+    let revealSeen = false;
+    try {
+      revealSeen = Boolean(sessionStorage.getItem("cardex_reveal_" + state.roomId + "_" + state.room.roundNumber));
+    } catch (e) {}
+    if (state.room.results && state.revealPlayedFor !== state.room.roundNumber && !state.revealActive && !revealSeen) {
       playRevealSequence(state.room.results);
     } else {
       renderReadyArea();
       const readyArea = document.getElementById("ready-area");
-      if (readyArea && state.revealPlayedFor === state.room.roundNumber) readyArea.classList.remove("hidden");
+      if (readyArea && (state.revealPlayedFor === state.room.roundNumber || revealSeen)) readyArea.classList.remove("hidden");
     }
   }
 }
@@ -1301,7 +1362,6 @@ async function hostController() {
   if (now < (state.hostCooldownUntil || 0)) return;
   const room = state.room;
   const humans = room.players.filter((p) => !p.isBot);
-
   const fail = (error) => {
     const msg = String((error && error.message) || "").toLowerCase();
     if (msg.includes("quota") || msg.includes("too many") || msg.includes("resource_exhausted") || msg.includes("permission")) {
@@ -1552,6 +1612,7 @@ $("#ready-button").addEventListener("click", async () => { try { await setReady(
 $("#force-start-button").addEventListener("click", async () => { try { await replaceUnreadyWithBots(state.roomId); await startRound(state.roomId, state.user); } catch (error) { setRoomMessage(error.message || "Failed force start."); } });
 $("#admin-button").addEventListener("click", showAdminScreen);
 $("#room-admin-button").addEventListener("click", showAdminScreen);
+
 $("#admin-back-button").addEventListener("click", () => {
   if (state.adminUnsub) { state.adminUnsub(); state.adminUnsub = null; }
   if (state.roomId) showScreen("room");
@@ -1706,10 +1767,8 @@ if (claimDailyBtn && !claimDailyBtn.dataset.bound) {
 
 const showSendMoneyBtn = document.getElementById("show-send-money-button");
 if (showSendMoneyBtn) showSendMoneyBtn.addEventListener("click", () => { $("#send-money-form").classList.remove("hidden"); });
-
 const cancelSendMoneyBtn = document.getElementById("cancel-send-money-button");
 if (cancelSendMoneyBtn) cancelSendMoneyBtn.addEventListener("click", () => { $("#send-money-form").classList.add("hidden"); });
-
 const sendMoneyBtn = document.getElementById("send-money-button");
 if (sendMoneyBtn) {
   sendMoneyBtn.addEventListener("click", async () => {
@@ -1787,6 +1846,7 @@ document.addEventListener("click", (e) => {
 
 /* =========================================================
    UI ENHANCEMENTS (swap FAB + exit buttons + HUD z-index)
+   RE-SKINNED to the White / Royal Blue / Gold light palette
    ========================================================= */
 function injectExtraStyles() {
   if (document.getElementById("cardex-extra-styles")) return;
@@ -1794,32 +1854,36 @@ function injectExtraStyles() {
   style.id = "cardex-extra-styles";
   style.textContent = `
     .hud { z-index: 30; }
+
     .swap-fab {
       position: absolute; right: 4%; top: 62%; transform: translateY(-50%);
       width: 48px; height: 48px; border-radius: 50%;
-      border: 3px solid rgba(255, 255, 255, 0.9);
-      background: linear-gradient(145deg, #ff4081, #c2185b);
+      border: 3px solid #ffffff;
+      background: linear-gradient(145deg, #FB7185, #E11D48);
       color: #ffffff; font-size: 22px; font-weight: 900; line-height: 1;
       padding: 0; margin: 0; display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55); cursor: pointer; z-index: 25;
+      box-shadow: 0 4px 14px rgba(225, 29, 72, 0.35); cursor: pointer; z-index: 25;
       transition: transform 0.12s ease;
     }
     .swap-fab:active { transform: translateY(-50%) scale(0.9) rotate(180deg); }
-    .exit-room-btn { background: #ff5252; color: #ffffff; box-shadow: 0 3px 0 #b71c1c; }
+
+    .exit-room-btn { background: #E11D48; color: #ffffff; box-shadow: 0 3px 0 #9F1239; }
     .ready-area .pg-actions { flex-wrap: wrap; }
-        .spectator-bar {
+
+    .spectator-bar {
       position: absolute; top: 64px; left: 12px; z-index: 26;
       display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
       max-width: 46%; pointer-events: auto;
     }
     .spectator-bar.hidden { display: none; }
+
     .spec-chip {
       display: flex; align-items: center; gap: 6px;
       padding: 5px 10px; border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, 0.22);
-      background: rgba(0, 0, 0, 0.45); color: #ffffff;
-      font: 700 12px/1 "Manrope", sans-serif; cursor: pointer;
-      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      border: 1px solid rgba(29, 78, 216, 0.25);
+      background: #ffffff; color: #1D4ED8;
+      font: 700 12px/1 "Inter", sans-serif; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
     }
     .spec-eye { font-size: 13px; }
     .spec-count { white-space: nowrap; }
@@ -1827,28 +1891,29 @@ function injectExtraStyles() {
     .spec-avatar {
       width: 26px; height: 26px; margin-left: -7px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      font: 800 11px/1 "Manrope", sans-serif; color: #0b1f14;
-      background: linear-gradient(160deg, #eecf7a, #c9a227);
-      border: 2px solid rgba(7, 24, 15, 0.9);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+      font: 800 11px/1 "Inter", sans-serif; color: #B45309;
+      background: linear-gradient(160deg, #FCD34D, #F59E0B);
+      border: 2px solid #ffffff;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
     }
     .spec-avatar:first-child { margin-left: 0; }
-    .spec-avatar.me { background: linear-gradient(160deg, #9be7c4, #3ecf8e); }
-    .spec-avatar.kicked { background: linear-gradient(160deg, #ffb4b4, #e05561); color: #3a0a0f; }
-    .spec-avatar.more { background: rgba(255, 255, 255, 0.18); color: #ffffff; }
+    .spec-avatar.me { background: linear-gradient(160deg, #7DD3FC, #0EA5E9); color: #ffffff; }
+    .spec-avatar.kicked { background: linear-gradient(160deg, #FB7185, #E11D48); color: #ffffff; }
+    .spec-avatar.more { background: rgba(29, 78, 216, 0.1); color: #1D4ED8; }
     .spec-list {
       display: flex; flex-direction: column; gap: 2px;
-      padding: 8px 10px; border-radius: 10px;
-      background: rgba(4, 12, 8, 0.92);
-      border: 1px solid rgba(255, 255, 255, 0.14);
+      padding: 8px 10px; border-radius: 12px;
+      background: #ffffff;
+      border: 1px solid rgba(29, 78, 216, 0.15);
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.10);
       max-height: 160px; overflow: auto; min-width: 160px;
     }
     .spec-list.hidden { display: none; }
     .spec-name {
-      font: 600 12px/1.35 "Manrope", sans-serif; color: #e8f3ec;
+      font: 600 12px/1.35 "Inter", sans-serif; color: #0F172A;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    .spec-name.kicked { color: #ff9aa4; }
+    .spec-name.kicked { color: #E11D48; }
     @media (max-width: 560px) {
       .spectator-bar { top: 58px; left: 8px; max-width: 52%; }
       .spec-avatar { width: 22px; height: 22px; font-size: 10px; }
