@@ -1,863 +1,407 @@
 /* =====================================================================
-   CARDEX — mobile.css  (FILE 2/7 : responsive felt zoning)
-   Purpose:
-   - Stop HUD / spectator bar / top seat / card clusters from overlapping
-   - Convert the 4-corner reveal into a single scrollable column
-   - Clamp card rows, controls, panels, and zoom view to the viewport
-   - Preserve desktop layout completely
-   Load order:
-   style.css -> theme.css -> mobile.css
+   CARDEX — mobile.css (FILE 2/4 : responsive geometry & fixturing)
+   Purpose: Clamp UI elements for Mobile Portrait (360px - 430px wide).
+   Prevents overlap, implements safe-areas, and converts layouts to vertical.
+   Load order: style.css -> theme.css -> mobile.css
    ===================================================================== */
 
 /* ---------------------------------------------------------------------
-   Local mobile tokens.
-   These are scoped to the room screen so later rules can recompute bands
-   from one place without hunting selectors.
---------------------------------------------------------------------- */
-#room-screen {
-  --hud-h: 56px;
-  --spec-h: 34px;
-  --seat-h: 96px;
-  --ctl-h: 52px;
-  --gap: 8px;
-  --side-top: 42vh;
-}
-
-/* ---------------------------------------------------------------------
-   D1 — HUD never overflows the right edge.
-   Badges wrap and truncate instead of pushing the gear button off-screen.
---------------------------------------------------------------------- */
-#room-screen .hud {
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 6px 8px;
-  align-items: center;
-  box-sizing: border-box;
-}
-
-#room-screen .hud-back,
-#room-screen #room-admin-button,
-#room-screen .pg-icon-btn {
-  flex: 0 0 auto;
-}
-
-#room-screen .hud-right,
-#room-screen .hud-badges {
-  flex: 1 1 auto;
-  min-width: 0;
-  flex-wrap: wrap;
-  gap: 4px;
-  justify-content: flex-end;
-  align-items: center;
-}
-
-#room-screen .hud-badge {
-  max-width: 30vw;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  box-sizing: border-box;
-}
-
-/* ---------------------------------------------------------------------
-   Spectator gallery strip.
-   The strip becomes a compact horizontal row directly under the HUD.
-   Its name list drops down instead of pushing the table layout around.
---------------------------------------------------------------------- */
-#room-screen .spectator-bar {
-  position: absolute;
-  top: calc(var(--hud-h) + var(--gap));
-  left: 8px;
-  right: 8px;
-  max-width: none;
-  width: auto;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
-  z-index: 26;
-  pointer-events: auto;
-  box-sizing: border-box;
-}
-
-#room-screen .spectator-bar.hidden {
-  display: none;
-}
-
-#room-screen .spec-chip {
-  flex: 0 0 auto;
-  max-width: 48vw;
-  padding: 4px 9px;
-  font-size: 11px;
-  line-height: 1;
-  box-sizing: border-box;
-}
-
-#room-screen .spec-eye {
-  font-size: 12px;
-}
-
-#room-screen .spec-count {
-  max-width: 28vw;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-#room-screen .spec-avatars {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-}
-
-#room-screen .spec-avatar {
-  width: 24px;
-  height: 24px;
-  margin-left: -6px;
-  font-size: 10px;
-  flex: 0 0 auto;
-}
-
-#room-screen .spec-avatar:first-child {
-  margin-left: 0;
-}
-
-#room-screen .spec-anchor {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 24px;
-  height: 24px;
-  visibility: hidden;
-  pointer-events: none;
-}
-
-#room-screen .spec-list {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  max-height: 150px;
-  overflow: auto;
-  border-radius: 12px;
-  padding: 8px 10px;
-  background: rgba(4, 16, 10, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
-  z-index: 27;
-}
-
-#room-screen .spec-list.hidden {
-  display: none;
-}
-
-#room-screen .spec-name {
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-/* ---------------------------------------------------------------------
-   D2 / D3 — Top opponent is pushed below HUD and spectator strip.
-   If no spectators exist, the spectator band collapses automatically.
---------------------------------------------------------------------- */
-#room-screen .seat-top {
-  top: calc(var(--hud-h) + var(--gap));
-  bottom: auto;
-}
-
-#room-screen .cluster-top {
-  top: calc(var(--hud-h) + var(--gap) + var(--seat-h) + 6px);
-  left: 50%;
-  right: auto;
-  transform: translateX(-50%);
-}
-
-#room-screen #spectator-bar:not(.hidden) ~ .seat-top {
-  top: calc(var(--hud-h) + var(--gap) + var(--spec-h) + var(--gap));
-}
-
-#room-screen #spectator-bar:not(.hidden) ~ .cluster-top {
-  top: calc(var(--hud-h) + var(--gap) + var(--spec-h) + var(--gap) + var(--seat-h) + 6px);
-}
-
-/* ---------------------------------------------------------------------
-   Card-back clusters become one short horizontal strip.
-   This prevents the old 3-row fan from covering opponent identities.
---------------------------------------------------------------------- */
-#room-screen .cluster {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 2px;
-  max-width: 92vw;
-  overflow: hidden;
-  pointer-events: none;
-  box-sizing: border-box;
-}
-
-#room-screen .back-fan {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 1px;
-  flex: 0 0 auto;
-}
-
-#room-screen .card-back {
-  width: 18px;
-  height: 26px;
-  margin-left: -8px;
-  flex: 0 0 auto;
-}
-
-#room-screen .card-back:first-child {
-  margin-left: 0;
-}
-
-/* ---------------------------------------------------------------------
-   D6 — Side opponents' card backs track their actual seats, not the top.
---------------------------------------------------------------------- */
-#room-screen .seat-left,
-#room-screen .seat-right {
-  top: var(--side-top);
-}
-
-#room-screen .cluster-left {
-  left: 2%;
-  right: auto;
-  top: calc(var(--side-top) + var(--seat-h) + 6px);
-}
-
-#room-screen .cluster-right {
-  right: 2%;
-  left: auto;
-  top: calc(var(--side-top) + var(--seat-h) + 6px);
-}
-
-/* ---------------------------------------------------------------------
-   D7 / D8 — Declutter the center and message bands.
-   The center timer is redundant on mobile because the zoom timer and
-   arrange status already show countdowns.
---------------------------------------------------------------------- */
-#room-screen .table-center {
-  display: none;
-}
-
-#room-screen #room-message {
-  top: auto;
-  bottom: calc(var(--ctl-h) + var(--gap) + 6px);
-  width: 92%;
-  left: 50%;
-  transform: translateX(-50%);
-  text-align: center;
-  box-sizing: border-box;
-}
-
-#room-screen #arrange-status {
-  top: auto;
-  bottom: calc(var(--ctl-h) + var(--gap) + 28px);
-  width: 92%;
-  left: 50%;
-  transform: translateX(-50%);
-  text-align: center;
-  box-sizing: border-box;
-}
-
-/* ---------------------------------------------------------------------
-   My rows and arrange controls.
-   Reserve a clean bottom control band and keep rows inside the viewport.
---------------------------------------------------------------------- */
-#room-screen .table-my-rows {
-  left: 50%;
-  transform: translateX(-50%);
-  width: 96%;
-  max-width: 96vw;
-  bottom: calc(var(--ctl-h) + var(--gap) + 10px);
-  box-sizing: border-box;
-}
-
-#room-screen .tmr-row {
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-#room-screen .tmr-tag {
-  flex: 0 0 52px;
-  font-size: 10px;
-}
-
-#room-screen .tmr-cards {
-  min-width: 0;
-  overflow: visible;
-}
-
-#room-screen .tmr-card {
-  width: 34px;
-  height: 50px;
-  margin-left: -10px;
-  flex: 0 0 auto;
-}
-
-#room-screen .tmr-card:first-child {
-  margin-left: 0;
-}
-
-#room-screen .arrange-controls {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: 8px;
-  width: 96%;
-  max-width: 96vw;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  gap: 6px;
-  z-index: 22;
-  box-sizing: border-box;
-}
-
-#room-screen .arrange-controls .pg-btn,
-#room-screen .arrange-controls button {
-  flex: 1 1 auto;
-  min-width: 82px;
-  padding: 10px 12px;
-  font-size: 13px;
-  line-height: 1;
-  box-sizing: border-box;
-}
-
-/* ---------------------------------------------------------------------
-   Zoom arrange view.
-   The zoom view becomes a full-screen mobile workbench with a dedicated
-   right gutter for the swap FAB.
---------------------------------------------------------------------- */
-#room-screen .zoom-view {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: calc(var(--hud-h) + var(--gap) + 8px) 10px calc(var(--ctl-h) + 14px);
-  box-sizing: border-box;
-  overflow: auto;
-  background: rgba(3, 14, 9, 0.96);
-  z-index: 40;
-}
-
-#room-screen .zoom-view.hidden {
-  display: none;
-}
-
-#room-screen .zoom-head {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-  font-size: 14px;
-  font-weight: 800;
-  color: var(--gold, #ffd54f);
-}
-
-#room-screen .zoom-rows {
-  position: relative;
-  flex: 1 1 auto;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  padding-right: 52px;
-  overflow-x: auto;
-  overflow-y: visible;
-  box-sizing: border-box;
-}
-
-#room-screen .my-rows {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  box-sizing: border-box;
-}
-
-#room-screen .my-row {
-  width: 100%;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  box-sizing: border-box;
-}
-
-#room-screen .row-label {
-  max-width: 100%;
-  text-align: center;
-  font-size: 11px;
-  line-height: 1.2;
-  white-space: normal;
-  box-sizing: border-box;
-}
-
-#room-screen .row-cards {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  display: flex;
-  justify-content: center;
-  align-items: flex-end;
-  flex-wrap: nowrap;
-  overflow: visible;
-  padding: 4px 0;
-  box-sizing: border-box;
-}
-
-#room-screen .row-cards .card {
-  width: 46px;
-  height: 66px;
-  margin-left: -12px;
-  flex: 0 0 auto;
-}
-
-#room-screen .row-cards .card:first-child {
-  margin-left: 0;
-}
-
-#room-screen .row-cards .card .rank {
-  font-size: 13px;
-}
-
-#room-screen .row-cards .card .suit {
-  font-size: 18px;
-}
-
-#room-screen .zoom-controls {
-  flex: 0 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-#room-screen .zoom-controls button,
-#room-screen .zoom-controls .pg-btn,
-#room-screen .zoom-controls .ready-btn {
-  flex: 1 1 auto;
-  min-width: 120px;
-  padding: 12px 14px;
-  font-size: 14px;
-  box-sizing: border-box;
-}
-
-/* D10 — swap FAB lives in its own gutter, not on top of the middle row. */
-#room-screen .swap-fab {
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 42px;
-  height: 42px;
-  font-size: 19px;
-  z-index: 45;
-}
-
-/* ---------------------------------------------------------------------
-   D4 / D5 — Reveal becomes a single vertical scroll column.
-   This is the biggest mobile gameplay improvement: no more left/right
-   hands colliding in the center on narrow phones.
---------------------------------------------------------------------- */
-#room-screen #reveal-layer {
-  position: absolute;
-  inset: 0;
-  display: none;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 10px;
-  padding: calc(var(--hud-h) + var(--gap) + 10px) 10px 18px;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  box-sizing: border-box;
-  background: rgba(2, 12, 8, 0.88);
-  z-index: 35;
-}
-
-#room-screen #reveal-layer:not(.hidden) {
-  display: flex;
-}
-
-#room-screen #spectator-bar:not(.hidden) ~ #reveal-layer {
-  padding-top: calc(var(--hud-h) + var(--gap) + var(--spec-h) + var(--gap) + 10px);
-}
-
-#room-screen .reveal-slot {
-  position: static;
-  left: auto;
-  right: auto;
-  top: auto;
-  bottom: auto;
-  transform: none;
-  width: 100%;
-  max-width: 100%;
-  margin: 0;
-  box-sizing: border-box;
-}
-
-#room-screen .reveal-banner {
-  width: 100%;
-  max-width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  box-sizing: border-box;
-}
-
-#room-screen .rb-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-}
-
-#room-screen .rb-pts {
-  flex: 0 0 auto;
-  font-size: 13px;
-}
-
-#room-screen .reveal-cards {
-  width: 100%;
-  max-width: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: flex-end;
-  flex-wrap: wrap;
-  gap: 2px;
-  overflow: visible;
-  box-sizing: border-box;
-}
-
-#room-screen .reveal-card {
-  width: 38px;
-  height: 55px;
-  margin-left: -8px;
-  flex: 0 0 auto;
-}
-
-#room-screen .reveal-card:first-child {
-  margin-left: 0;
-}
-
-#room-screen .reveal-card .rank {
-  font-size: 12px;
-}
-
-#room-screen .reveal-card .suit {
-  font-size: 16px;
-}
-
-#room-screen .reveal-total {
-  width: fit-content;
-  max-width: 100%;
-  margin: 2px auto 0;
-  font-size: 12px;
-  box-sizing: border-box;
-}
-
-#room-screen #reveal-skip {
-  position: sticky;
-  top: 4px;
-  align-self: flex-end;
-  z-index: 5;
-  flex: 0 0 auto;
-  padding: 8px 12px;
-  font-size: 12px;
-}
-
-/* ---------------------------------------------------------------------
-   Panels / ready area / results stay inside the viewport.
-   We do not force new positions here, only clamp size and scrolling.
---------------------------------------------------------------------- */
-#room-screen .pg-panel,
-#room-screen .ready-area,
-#room-screen #results-section,
-#room-screen #lobby-section {
-  width: min(96vw, 560px);
-  max-width: 96vw;
-  max-height: 74vh;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  box-sizing: border-box;
-}
-
-#room-screen .pg-actions {
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: center;
-}
-
-#room-screen .pg-actions button,
-#room-screen .pg-actions .pg-btn,
-#room-screen .pg-actions .ready-btn {
-  flex: 1 1 auto;
-  min-width: 110px;
-  box-sizing: border-box;
-}
-
-#room-screen .player-row,
-#room-screen .ready-status-row {
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  padding: 8px 10px;
-}
-
-#room-screen .player-badges {
-  flex-wrap: wrap;
-  gap: 4px;
-  min-width: 0;
-}
-
-#room-screen .winner-badge,
-#room-screen .foul-badge,
-#room-screen .rank-badge,
-#room-screen .net-badge,
-#room-screen .scoop-badge,
-#room-screen .royalty-badge {
-  font-size: 10px;
-  padding: 2px 8px;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-#room-screen .pg-board {
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-#room-screen .pg-board-head {
-  white-space: normal;
-  line-height: 1.25;
-  font-size: 12px;
-}
-
-#room-screen .result-card-row {
-  flex-wrap: wrap;
-  justify-content: flex-start;
-}
-
-#room-screen .result-card {
-  width: 34px;
-  height: 50px;
-  margin-left: -8px;
-  flex: 0 0 auto;
-}
-
-#room-screen .result-card:first-child {
-  margin-left: 0;
-}
-
-/* ---------------------------------------------------------------------
-   Small phones: 430px and below.
-   Remove opponent card-back strips entirely. The seat ✓ / … status is
-   enough information, and this kills the remaining cluster collisions.
---------------------------------------------------------------------- */
-@media (max-width: 430px) {
+   1. MOBILE TOKENS & SAFE ZONES
+   Define the physical limits of our machine bed.
+   --------------------------------------------------------------------- */
+@media (max-width: 768px) {
   #room-screen {
-    --hud-h: 52px;
-    --spec-h: 30px;
-    --seat-h: 82px;
-    --ctl-h: 48px;
-    --side-top: 40vh;
+    --hud-h: 56px;
+    --spec-h: 32px;
+    --seat-h: 80px;
+    --ctl-h: 72px; /* Taller for thumb reach */
+    --gap: 12px;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
   }
 
-  #room-screen .cluster {
-    display: none;
+  body {
+    overscroll-behavior-y: contain; /* Prevents pull-to-refresh interference */
+  }
+}
+
+/* ---------------------------------------------------------------------
+   2. HUD & SPECTATORS (Top Clamping)
+   Keep the status indicators compact and out of the way.
+   --------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  #room-screen .hud {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 12px;
+    padding-top: calc(8px + env(safe-area-inset-top, 0px));
+    box-sizing: border-box;
   }
 
-  #room-screen .avatar {
-    width: 40px;
-    height: 40px;
-    font-size: 15px;
-  }
-
-  #room-screen .seat-name {
-    max-width: 76px;
-    font-size: 10px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  #room-screen .coin-pill {
-    max-width: 88px;
-    font-size: 10px;
-    padding: 2px 7px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  #room-screen .seat-status {
-    font-size: 12px;
+  #room-screen .hud-right,
+  #room-screen .hud-badges {
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: flex-end;
   }
 
   #room-screen .hud-badge {
-    max-width: 26vw;
+    max-width: 35vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 11px;
   }
 
-  #room-screen .spec-avatar {
-    width: 22px;
-    height: 22px;
-    font-size: 9px;
-  }
-
-  #room-screen .row-cards .card {
-    width: 40px;
-    height: 58px;
-    margin-left: -14px;
-  }
-
-  #room-screen .tmr-card {
-    width: 30px;
-    height: 44px;
-    margin-left: -12px;
-  }
-
-  #room-screen .reveal-card {
-    width: 32px;
-    height: 46px;
-    margin-left: -8px;
-  }
-
-  #room-screen .result-card {
-    width: 28px;
-    height: 40px;
-    margin-left: -8px;
-  }
-
-  #room-screen .arrange-controls .pg-btn,
-  #room-screen .arrange-controls button {
-    min-width: 72px;
-    padding: 9px 10px;
-    font-size: 12px;
-  }
-
-  #room-screen .zoom-controls button,
-  #room-screen .zoom-controls .pg-btn,
-  #room-screen .zoom-controls .ready-btn {
-    min-width: 96px;
-    padding: 10px 12px;
-    font-size: 13px;
-  }
-}
-
-/* ---------------------------------------------------------------------
-   Very small phones: 360px and below.
-   Tighten the last crowded bands.
---------------------------------------------------------------------- */
-@media (max-width: 360px) {
-  #room-screen {
-    --hud-h: 50px;
-    --spec-h: 28px;
-    --seat-h: 76px;
-    --ctl-h: 46px;
-    --side-top: 38vh;
-  }
-
-  #room-screen .hud-badge {
-    max-width: 23vw;
-    font-size: 10px;
+  /* Spectator strip becomes a tight pill */
+  #room-screen .spectator-bar {
+    top: calc(var(--hud-h) + env(safe-area-inset-top, 0px) + 4px);
+    left: 12px;
+    right: 12px;
+    width: auto;
+    height: var(--spec-h);
+    z-index: 26;
   }
 
   #room-screen .spec-chip {
-    padding: 3px 7px;
-    font-size: 10px;
-  }
-
-  #room-screen .seat-name {
-    max-width: 64px;
-  }
-
-  #room-screen .coin-pill {
-    max-width: 74px;
-  }
-
-  #room-screen .row-cards .card {
-    width: 36px;
-    height: 52px;
-    margin-left: -14px;
-  }
-
-  #room-screen .tmr-card {
-    width: 27px;
-    height: 40px;
-    margin-left: -12px;
-  }
-
-  #room-screen .reveal-card {
-    width: 29px;
-    height: 42px;
-    margin-left: -8px;
-  }
-
-  #room-screen .arrange-controls .pg-btn,
-  #room-screen .arrange-controls button {
-    min-width: 64px;
-    padding: 8px 8px;
+    padding: 4px 10px;
     font-size: 11px;
   }
 }
 
 /* ---------------------------------------------------------------------
-   Landscape phones: keep the table usable without extreme vertical crush.
---------------------------------------------------------------------- */
-@media (max-width: 820px) and (orientation: landscape) {
-  #room-screen {
-    --hud-h: 46px;
-    --spec-h: 28px;
-    --seat-h: 70px;
-    --ctl-h: 44px;
-    --side-top: 38vh;
-  }
-
+   3. OPPONENT SEATS & CARD CLUSTERS (Perimeter Tooling)
+   Scale down opponents so they don't block the center action.
+   --------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  /* Push top opponent below HUD/Spectators */
   #room-screen .seat-top {
-    top: calc(var(--hud-h) + 4px);
+    top: calc(var(--hud-h) + var(--spec-h) + var(--gap) + env(safe-area-inset-top, 0px));
+    bottom: auto;
+    transform: translateX(-50%);
   }
 
-  #room-screen #spectator-bar:not(.hidden) ~ .seat-top {
-    top: calc(var(--hud-h) + var(--gap) + var(--spec-h) + 4px);
+  #room-screen .cluster-top {
+    top: calc(var(--hud-h) + var(--spec-h) + var(--seat-h) + var(--gap) + 10px + env(safe-area-inset-top, 0px));
+    transform: translateX(-50%);
   }
 
+  /* Push side opponents to edges and scale down */
+  #room-screen .seat-left,
+  #room-screen .seat-right {
+    top: 35%;
+  }
+  
+  #room-screen .seat-left { left: 8px; right: auto; }
+  #room-screen .seat-right { right: 8px; left: auto; }
+
+  #room-screen .cluster-left,
+  #room-screen .cluster-right {
+    top: calc(35% + var(--seat-h) + 6px);
+  }
+  
+  #room-screen .cluster-left { left: 8px; right: auto; }
+  #room-screen .cluster-right { right: 8px; left: auto; }
+
+  /* Tighten card backs into a solid block */
+  #room-screen .cluster {
+    gap: 0;
+    max-width: 40vw;
+  }
+
+  #room-screen .card-back {
+    width: 18px;
+    height: 26px;
+    margin-left: -10px;
+    border-width: 1px;
+  }
+  
+  #room-screen .card-back:first-child { margin-left: 0; }
+}
+
+/* ---------------------------------------------------------------------
+   4. TABLE CENTER & MESSAGES
+   Hide redundant desktop elements.
+   --------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  #room-screen .table-center { display: none; } /* Hide desktop timer */
+  #room-screen .mat-logo { display: none; }     /* Hide large center logo */
+
+  #room-screen #room-message,
+  #room-screen #arrange-status {
+    bottom: calc(var(--ctl-h) + var(--gap) + var(--safe-bottom) + 80px);
+    width: 90%;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    font-size: 14px;
+    font-weight: 700;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   5. PLAYER HAND & CONTROLS (The Workbench)
+   Anchor to the bottom. This is the most critical touch zone.
+   --------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  /* The Controls (Ready, Arrange, etc.) */
+  #room-screen .arrange-controls {
+    bottom: var(--safe-bottom);
+    width: 100%;
+    max-width: 100%;
+    left: 0;
+    transform: none;
+    padding: 10px 12px;
+    background: var(--bg-surface);
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
+    z-index: 22;
+    gap: 8px;
+  }
+
+  #room-screen .arrange-controls .pg-btn,
+  #room-screen .arrange-controls button {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 12px 8px;
+    font-size: 14px;
+  }
+
+  /* The Player's Hand */
   #room-screen .table-my-rows {
-    bottom: calc(var(--ctl-h) + 6px);
+    bottom: calc(var(--ctl-h) + var(--gap) + var(--safe-bottom) + 10px);
+    width: 96%;
+    max-width: 96vw;
+    left: 50%;
+    transform: translateX(-50%);
+    gap: 8px;
+  }
+
+  #room-screen .tmr-card {
+    width: 38px;
+    height: 54px;
+    margin-left: -12px;
+  }
+  
+  #room-screen .tmr-card:first-child { margin-left: 0; }
+  #room-screen .tmr-card .rank { font-size: 12px; }
+  #room-screen .tmr-card .suit { font-size: 16px; }
+}
+
+/* ---------------------------------------------------------------------
+   6. ZOOM ARRANGE VIEW (Full-Screen Workbench)
+   Uses fixed positioning to prevent iOS Safari scroll bugs.
+   --------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  #room-screen .zoom-view {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-base);
+    z-index: 100;
+    padding: env(safe-area-inset-top, 16px) 12px calc(var(--ctl-h) + var(--safe-bottom) + 12px);
+    overflow-y: auto;
+    animation: slideUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  #room-screen .zoom-view.hidden { display: none; }
+
+  @keyframes slideUp {
+    from { transform: translateY(30px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  #room-screen .zoom-head {
+    position: sticky;
+    top: 0;
+    background: var(--bg-base);
+    padding: 8px 0 12px;
+    z-index: 5;
+    color: var(--royal);
+  }
+
+  #room-screen .zoom-rows {
+    padding-right: 0; /* Remove desktop gutter for swap FAB */
+    padding-bottom: 20px;
   }
 
   #room-screen .row-cards .card {
-    width: 38px;
-    height: 55px;
+    width: 48px;
+    height: 68px;
     margin-left: -14px;
+  }
+  
+  #room-screen .row-cards .card:first-child { margin-left: 0; }
+
+  /* Swap FAB pinned to right edge */
+  #room-screen .swap-fab {
+    position: fixed;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 52px;
+    height: 52px;
+    font-size: 24px;
+    z-index: 105;
+  }
+
+  #room-screen .zoom-controls {
+    position: fixed;
+    bottom: var(--safe-bottom);
+    left: 0;
+    width: 100%;
+    background: var(--bg-surface);
+    padding: 12px;
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
+    z-index: 105;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   7. REVEAL LAYER (Vertical Feed)
+   Converts 4-corner layout to a scrollable vertical feed.
+   --------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  #room-screen #reveal-layer {
+    position: fixed;
+    inset: 0;
+    background: rgba(244, 247, 246, 0.98);
+    z-index: 90;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 24px;
+    padding: calc(var(--hud-h) + 20px) 16px calc(var(--ctl-h) + 40px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    animation: slideUp 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  #room-screen #reveal-layer.hidden { display: none; }
+
+  #room-screen .reveal-slot {
+    position: static;
+    width: 100%;
+    max-width: 100%;
+    left: auto; right: auto; top: auto; bottom: auto;
+    transform: none;
+  }
+
+  #room-screen .reveal-banner {
+    font-size: 14px;
+    padding: 6px 14px;
+    background: var(--bg-surface);
+    border: 1.5px solid var(--royal);
+    color: var(--royal);
+  }
+
+  #room-screen .reveal-cards {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    -webkit-overflow-scrolling: touch;
   }
 
   #room-screen .reveal-card {
-    width: 30px;
-    height: 44px;
-    margin-left: -8px;
+    width: 52px;
+    height: 74px;
+    margin-left: -12px;
+    flex-shrink: 0;
+  }
+  
+  #room-screen .reveal-card:first-child { margin-left: 0; }
+
+  #room-screen #reveal-skip {
+    position: fixed;
+    bottom: calc(var(--safe-bottom) + 20px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 95;
+    padding: 14px 32px;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   8. OVERLAYS & MODALS (Slide-Up Drawers)
+   --------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  #transaction-history-panel,
+  #send-money-form {
+    align-items: flex-end;
+    padding: 0;
+    background: rgba(15, 23, 42, 0.4);
+  }
+
+  .tx-modal,
+  .send-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 85vh;
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    border-bottom: none;
+    animation: drawerSlide 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  @keyframes drawerSlide {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+}
+
+/* ---------------------------------------------------------------------
+   9. SCORE PANEL (Compact Bottom-Left)
+   --------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  #room-screen .score-panel {
+    left: 12px;
+    right: auto;
+    top: auto;
+    bottom: calc(var(--ctl-h) + var(--safe-bottom) + 80px);
+    transform: none;
+    padding: 8px 12px;
+    gap: 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    box-shadow: var(--sh-2);
+  }
+
+  .sp-row {
+    flex-direction: column;
+    gap: 0;
+    align-items: center;
+    font-size: 11px;
+    color: var(--ink);
+  }
+
+  .sp-total {
+    border-top: none;
+    border-left: 1px solid var(--line-2);
+    margin: 0;
+    padding: 0 0 0 10px;
+    font-weight: 800;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   10. SMALL PHONE OVERRIDE (< 400px wide)
+   --------------------------------------------------------------------- */
+@media (max-width: 400px) {
+  #room-screen .tmr-card {
+    width: 32px;
+    height: 46px;
+    margin-left: -10px;
+  }
+  
+  #room-screen .row-cards .card {
+    width: 42px;
+    height: 60px;
+    margin-left: -12px;
+  }
+
+  #room-screen .seat-name {
+    font-size: 10px;
+    max-width: 70px;
   }
 }
