@@ -1,1004 +1,1151 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>CARDEX — Chinese Poker Multiplayer</title>
-<link rel="stylesheet" href="style.css" />
-<!-- CARDEX login screen typefaces: Fraunces (display serif) + Manrope (ui sans) -->
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link
-href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,700;0,900;1,500&family=Manrope:wght@400;500;600;700&display=swap"
-rel="stylesheet"
-/>
-<style>
-#score-panel {
-display: none;
-}
-#reveal-layer:not(.hidden) ~ #score-panel {
-display: block;
-}
-#transaction-history-panel,
-#send-money-form {
-position: fixed;
-inset: 0;
-z-index: 1200;
-display: flex;
-align-items: center;
-justify-content: center;
-background: rgba(0, 0, 0, 0.55);
-padding: 16px;
-}
-#transaction-history-panel.hidden,
-#send-money-form.hidden {
-display: none;
-}
-.tx-modal,
-.send-modal {
-position: relative;
-width: min(94%, 560px);
-max-height: 86vh;
-overflow: auto;
-background: rgba(7, 24, 15, 0.98);
-border: 1px solid rgba(255, 255, 255, 0.14);
-border-radius: 16px;
-padding: 18px;
-}
-/* Locked (non-editable) setting labels */
-.fixed-setting {
-padding: 10px;
-border-radius: 10px;
-border: 1px dashed rgba(255, 255, 255, 0.25);
-background: rgba(255, 255, 255, 0.04);
-color: rgba(255, 255, 255, 0.7);
-font-size: 14px;
-font-weight: 700;
-}
-</style>
-<!-- ============================================================ -->
-<!-- CARDEX START PAGE — scoped entirely under #login-screen so    -->
-<!-- it never touches menu-screen / room-screen / admin-screen,    -->
-<!-- which share some of the same class names (.fp-wrap, .mini…). -->
-<!-- ============================================================ -->
-<style id="cardex-login-styles">
-#login-screen,
-#login-screen *,
-#login-screen *::before,
-#login-screen *::after {
-box-sizing: border-box;
-}
-#login-screen {
---cx-baize-0: #071710;
---cx-baize-1: #0e2a1d;
---cx-baize-2: #143a26;
---cx-ink: #14100a;
---cx-parchment: #f4ead2;
---cx-parchment-dim: #cdbf9e;
---cx-brass: #c9a227;
---cx-brass-bright: #eecf7a;
---cx-brass-dim: #8a6d22;
---cx-claret: #8c2f39;
---cx-claret-bright: #d17b84;
-}
-/* ---------- stage / atmosphere ---------- */
-#login-screen .cardex-stage {
-position: relative;
-width: 100%;
-min-height: 100vh;
-display: flex;
-align-items: center;
-justify-content: center;
-overflow: hidden;
-padding: 32px 20px;
-background:
-radial-gradient(ellipse 60% 42% at 50% 20%, rgba(238, 207, 122, 0.12), transparent 60%),
-radial-gradient(ellipse 120% 90% at 50% 55%, var(--cx-baize-2) 0%, var(--cx-baize-1) 45%, var(--cx-baize-0) 78%, #040a06 100%);
-}
-#login-screen .cardex-stage::before {
-content: "";
-position: absolute;
-inset: 0;
-opacity: 0.05;
-mix-blend-mode: overlay;
-pointer-events: none;
-background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='300' height='300' filter='url(%23n)'/></svg>");
-}
-#login-screen .cardex-spotlight {
-position: absolute;
-top: -14%;
-left: 50%;
-transform: translateX(-50%);
-width: 640px;
-height: 640px;
-max-width: 140vw;
-background: radial-gradient(circle, rgba(238, 207, 122, 0.16) 0%, rgba(238, 207, 122, 0.05) 42%, transparent 70%);
-filter: blur(6px);
-pointer-events: none;
-z-index: 0;
-}
-#login-screen .fp-backdrop {
-position: absolute;
-inset: 0;
-overflow: hidden;
-pointer-events: none;
-z-index: 0;
-}
-#login-screen .draft-card {
-position: absolute;
-font-family: Georgia, serif;
-line-height: 1;
-color: var(--cx-brass);
-opacity: 0.07;
-filter: blur(1px);
-will-change: transform;
-animation: cx-drift 50s ease-in-out infinite;
-}
-#login-screen .dc-1 { top: 6%;  left: 5%;  font-size: 7.5rem; animation-duration: 54s; animation-delay: -6s; }
-#login-screen .dc-2 { top: 64%; left: 3%;  font-size: 5.2rem; animation-duration: 40s; animation-delay: -18s; color: var(--cx-claret); opacity: 0.06; }
-#login-screen .dc-3 { top: 12%; right: 5%; font-size: 6.4rem; animation-duration: 46s; animation-delay: -2s;  color: var(--cx-claret); opacity: 0.05; }
-#login-screen .dc-4 { top: 66%; right: 7%; font-size: 7.8rem; animation-duration: 60s; animation-delay: -30s; }
-#login-screen .dc-5 { top: 38%; left: -3%; font-size: 4.4rem; animation-duration: 36s; animation-delay: -10s; opacity: 0.045; }
-#login-screen .dc-6 { top: 85%; right: 26%; font-size: 3.8rem; animation-duration: 44s; animation-delay: -22s; color: var(--cx-claret); opacity: 0.05; }
-@keyframes cx-drift {
-0%, 100% { transform: translate(0, 0) rotate(0deg); }
-50%      { transform: translate(14px, -20px) rotate(5deg); }
-}
-/* ---------- panel ---------- */
-#login-screen .fp-wrap {
-position: relative;
-z-index: 2;
-width: 100%;
-display: flex;
-justify-content: center;
-}
-#login-screen .fp-panel {
-position: relative;
-width: 100%;
-max-width: 420px;
-padding: 44px 38px 30px;
-border-radius: 6px;
-background: linear-gradient(180deg, rgba(20, 58, 38, 0.86), rgba(8, 20, 13, 0.94));
-border: 1px solid rgba(201, 162, 39, 0.35);
-box-shadow:
-0 0 0 1px rgba(201, 162, 39, 0.08),
-0 30px 60px -20px rgba(0, 0, 0, 0.65),
-0 0 80px -24px rgba(238, 207, 122, 0.2);
-backdrop-filter: blur(14px) saturate(120%);
--webkit-backdrop-filter: blur(14px) saturate(120%);
-animation: cx-panel-rise 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-#login-screen .fp-panel::before {
-content: "";
-position: absolute;
-inset: 8px;
-border: 1px solid rgba(201, 162, 39, 0.16);
-border-radius: 3px;
-pointer-events: none;
-}
-@keyframes cx-panel-rise {
-from { opacity: 0; transform: translateY(18px) scale(0.98); }
-to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-/* ---------- dealt hand / wordmark ---------- */
-#login-screen .fp-logo {
-text-align: center;
-margin-bottom: 24px;
-}
-#login-screen .fp-logo-cards {
-display: flex;
-justify-content: center;
-align-items: flex-end;
-height: 64px;
-margin-bottom: 16px;
-}
-#login-screen .mini {
-width: 40px;
-height: 56px;
-border-radius: 5px;
-position: relative;
-display: flex;
-align-items: center;
-justify-content: center;
-font-family: Georgia, serif;
-font-size: 1.15rem;
-font-weight: 700;
-background: linear-gradient(160deg, #fbf4e2, #efe3c2);
-border: 1px solid rgba(20, 16, 9, 0.5);
-box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
-opacity: 0;
-}
-#login-screen .mini::before,
-#login-screen .mini::after {
-position: absolute;
-font-size: 0.55rem;
-line-height: 1;
-}
-#login-screen .mini::before { top: 4px; left: 4px; }
-#login-screen .mini::after  { bottom: 4px; right: 4px; transform: rotate(180deg); }
-#login-screen .cx-suit-spade,
-#login-screen .cx-suit-club { color: var(--cx-ink); }
-#login-screen .cx-suit-heart { color: var(--cx-claret); }
-#login-screen .cx-suit-spade::before, #login-screen .cx-suit-spade::after { content: "♠"; }
-#login-screen .cx-suit-heart::before, #login-screen .cx-suit-heart::after { content: "♥"; }
-#login-screen .cx-suit-club::before,  #login-screen .cx-suit-club::after  { content: "♣"; }
-#login-screen .mini-1 { margin-right: -10px; animation: cx-deal-1 560ms cubic-bezier(0.2, 0.8, 0.2, 1) 80ms both; }
-#login-screen .mini-2 { z-index: 2; animation: cx-deal-2 560ms cubic-bezier(0.2, 0.8, 0.2, 1) 220ms both; }
-#login-screen .mini-3 { margin-left: -10px; animation: cx-deal-3 560ms cubic-bezier(0.2, 0.8, 0.2, 1) 360ms both; }
-@keyframes cx-deal-1 { from { opacity: 0; transform: translateY(-36px) rotate(0deg); } to { opacity: 1; transform: translateY(6px) rotate(-10deg); } }
-@keyframes cx-deal-2 { from { opacity: 0; transform: translateY(-36px) rotate(0deg); } to { opacity: 1; transform: translateY(-4px) rotate(0deg); } }
-@keyframes cx-deal-3 { from { opacity: 0; transform: translateY(-36px) rotate(0deg); } to { opacity: 1; transform: translateY(6px) rotate(10deg); } }
-#login-screen .fp-title {
-margin: 0 0 10px;
-text-align: center;
-font-family: "Fraunces", Georgia, serif;
-font-weight: 900;
-font-size: clamp(2.1rem, 6vw, 2.85rem);
-letter-spacing: 0.04em;
-background: linear-gradient(100deg, var(--cx-brass-dim) 0%, var(--cx-brass-bright) 30%, #fff6db 45%, var(--cx-brass-bright) 60%, var(--cx-brass-dim) 100%);
-background-size: 220% 100%;
--webkit-background-clip: text;
-background-clip: text;
-color: transparent;
-text-shadow: 0 0 34px rgba(238, 207, 122, 0.18);
-animation: cx-sheen 2600ms ease-out 640ms both;
-}
-@keyframes cx-sheen {
-0%   { background-position: 130% 0; opacity: 0; }
-25%  { opacity: 1; }
-100% { background-position: -30% 0; opacity: 1; }
-}
-#login-screen .cx-divider {
-display: flex;
-align-items: center;
-justify-content: center;
-gap: 10px;
-margin-bottom: 12px;
-}
-#login-screen .cx-divider span {
-width: 38px;
-height: 1px;
-background: linear-gradient(90deg, transparent, var(--cx-brass-dim));
-}
-#login-screen .cx-divider span:last-child {
-background: linear-gradient(90deg, var(--cx-brass-dim), transparent);
-}
-#login-screen .cx-divider i {
-font-style: normal;
-color: var(--cx-claret);
-font-size: 0.7rem;
-}
-#login-screen .fp-tagline {
-text-align: center;
-font-family: "Fraunces", Georgia, serif;
-font-style: italic;
-font-weight: 500;
-font-size: 0.98rem;
-color: var(--cx-parchment-dim);
-}
-/* ---------- form ---------- */
-#login-screen .form-group {
-margin-bottom: 16px;
-text-align: left;
-}
-#login-screen .form-group label {
-display: block;
-margin-bottom: 6px;
-font-family: "Manrope", sans-serif;
-font-size: 0.8rem;
-font-weight: 600;
-color: var(--cx-parchment-dim);
-}
-#login-screen .cx-input-wrap {
-position: relative;
-}
-#login-screen .cx-input-wrap svg {
-position: absolute;
-top: 50%;
-left: 12px;
-transform: translateY(-50%);
-width: 15px;
-height: 15px;
-color: var(--cx-brass-dim);
-pointer-events: none;
-}
-#login-screen .form-group input {
-width: 100%;
-padding: 12px 14px 12px 38px;
-border-radius: 4px;
-border: 1px solid rgba(201, 162, 39, 0.28);
-background: rgba(5, 14, 9, 0.55);
-color: var(--cx-parchment);
-font-family: "Manrope", sans-serif;
-font-size: 0.95rem;
-transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
-}
-#login-screen .form-group input::placeholder {
-color: rgba(205, 191, 158, 0.4);
-}
-#login-screen .form-group input:focus,
-#login-screen .form-group input:focus-visible {
-outline: none;
-border-color: var(--cx-brass);
-background: rgba(5, 14, 9, 0.75);
-box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.16), 0 0 24px rgba(201, 162, 39, 0.12);
-}
-/* ---------- CTA ---------- */
-#login-screen .btn-primary {
-position: relative;
-overflow: hidden;
-width: 100%;
-margin-top: 6px;
-padding: 13px 20px;
-border: none;
-border-radius: 4px;
-background: linear-gradient(180deg, var(--cx-brass-bright), var(--cx-brass) 60%, var(--cx-brass-dim));
-color: #201603;
-font-family: "Manrope", sans-serif;
-font-weight: 700;
-font-size: 0.98rem;
-letter-spacing: 0.01em;
-cursor: pointer;
-box-shadow: 0 10px 24px -8px rgba(201, 162, 39, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.35);
-transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
-}
-#login-screen .btn-primary:hover {
-filter: brightness(1.06);
-transform: translateY(-1px);
-box-shadow: 0 14px 30px -8px rgba(201, 162, 39, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.4);
-}
-#login-screen .btn-primary:active {
-transform: translateY(0);
-filter: brightness(0.97);
-}
-#login-screen .btn-primary:focus-visible {
-outline: 2px solid var(--cx-parchment);
-outline-offset: 2px;
-}
-#login-screen .btn-primary::after {
-content: "";
-position: absolute;
-top: 0;
-left: -60%;
-width: 40%;
-height: 100%;
-background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.55), transparent);
-transform: skewX(-20deg);
-transition: left 520ms ease;
-}
-#login-screen .btn-primary:hover::after {
-left: 130%;
-}
-/* ---------- error ---------- */
-#login-screen .error {
-margin-top: 12px;
-text-align: center;
-font-family: "Manrope", sans-serif;
-font-size: 0.85rem;
-color: var(--cx-claret-bright);
-border-radius: 4px;
-}
-#login-screen .error:not(:empty) {
-padding: 8px 10px;
-background: rgba(140, 47, 57, 0.14);
-border: 1px solid rgba(209, 123, 132, 0.35);
-animation: cx-shake 420ms ease;
-}
-@keyframes cx-shake {
-0%, 100% { transform: translateX(0); }
-20% { transform: translateX(-4px); }
-40% { transform: translateX(4px); }
-60% { transform: translateX(-3px); }
-80% { transform: translateX(3px); }
-}
-/* ---------- footer ---------- */
-#login-screen .fp-foot {
-margin-top: 20px;
-display: flex;
-align-items: center;
-justify-content: center;
-gap: 8px;
-text-align: center;
-font-family: "Manrope", sans-serif;
-font-size: 0.72rem;
-color: rgba(205, 191, 158, 0.45);
-}
-#login-screen .fp-foot .cx-sep {
-color: var(--cx-brass-dim);
-font-size: 0.6rem;
-}
-/* ---------- responsive & motion ---------- */
-@media (max-width: 480px) {
-#login-screen .fp-panel { padding: 34px 22px 24px; max-width: 360px; }
-#login-screen .fp-title { font-size: 2rem; }
-}
-@media (prefers-reduced-motion: reduce) {
-#login-screen .draft-card,
-#login-screen .fp-panel,
-#login-screen .mini,
-#login-screen .mini-1,
-#login-screen .mini-2,
-#login-screen .mini-3,
-#login-screen .fp-title,
-#login-screen .btn-primary::after,
-#login-screen .error:not(:empty) {
-animation: none !important;
-transition: none !important;
-opacity: 1 !important;
-background-position: 0 0 !important;
-}
-}
-</style>
-<link rel="stylesheet" href="mobile.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#F4F7F6" />
+  <title>CARDEX — Chinese Poker Multiplayer</title>
+
+  <!-- CARDEX typefaces: Fraunces (display serif) + Inter (ui sans) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,700;0,900;1,500&family=Inter:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- Load order: Base Geometry -> Paint/Skin -> Mobile Fixturing -->
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="mobile.css" />
+
+  <!-- Anti-flash: paints base color before CSS parse -->
+  <script>document.documentElement.style.background = "#F4F7F6";</script>
+
+  <style>
+    /* ============================================================
+       GLOBAL APP OVERRIDES (Light theme)
+       ============================================================ */
+    #score-panel {
+      display: none;
+    }
+    #reveal-layer:not(.hidden) ~ #score-panel {
+      display: block;
+    }
+
+    /* Money overlays (Send Money + Transaction History) */
+    #transaction-history-panel,
+    #send-money-form {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(15, 23, 42, 0.45);
+      padding: 16px;
+    }
+    #transaction-history-panel.hidden,
+    #send-money-form.hidden {
+      display: none;
+    }
+    .tx-modal,
+    .send-modal {
+      position: relative;
+      width: min(94%, 560px);
+      max-height: 86vh;
+      overflow: auto;
+      background: #ffffff;
+      border: 1px solid rgba(29, 78, 216, 0.15);
+      border-radius: 20px;
+      padding: 18px;
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+      color: #0f172a;
+    }
+
+    /* Locked (non-editable) setting labels */
+    .fixed-setting {
+      padding: 10px;
+      border-radius: 12px;
+      border: 1px dashed rgba(0, 0, 0, 0.2);
+      background: rgba(29, 78, 216, 0.06);
+      color: #64748b;
+      font-size: 14px;
+      font-weight: 700;
+    }
+  </style>
+
+  <!-- ============================================================ -->
+  <!-- CARDEX START PAGE — scoped entirely under #login-screen so    -->
+  <!-- it never touches menu-screen / room-screen / admin-screen,    -->
+  <!-- which share some of the same class names (.fp-wrap, .mini…). -->
+  <!-- ============================================================ -->
+  <style id="cardex-login-styles">
+    #login-screen,
+    #login-screen *,
+    #login-screen *::before,
+    #login-screen *::after {
+      box-sizing: border-box;
+    }
+
+    #login-screen {
+      /* New light palette: white / royal / sky / gold / red */
+      --cx-bg-0: #eef4fb;
+      --cx-bg-1: #f7fafc;
+      --cx-white: #ffffff;
+      --cx-ink: #0f172a;
+      --cx-ink-dim: #64748b;
+      --cx-royal: #1d4ed8;
+      --cx-royal-bright: #3b82f6;
+      --cx-sky: #0ea5e9;
+      --cx-sky-soft: #e0f2fe;
+      --cx-gold: #f59e0b;
+      --cx-gold-bright: #fcd34d;
+      --cx-gold-deep: #b45309;
+      --cx-red: #e11d48;
+    }
+
+    /* ---------- stage / atmosphere ---------- */
+    #login-screen .cardex-stage {
+      position: relative;
+      width: 100%;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      padding: 32px 20px;
+      background:
+        radial-gradient(ellipse 60% 42% at 50% 14%, rgba(252, 211, 77, 0.22), transparent 60%),
+        radial-gradient(ellipse 120% 90% at 50% 60%, var(--cx-sky-soft) 0%, var(--cx-bg-1) 48%, var(--cx-bg-0) 100%);
+    }
+
+    #login-screen .cardex-stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: 0.04;
+      mix-blend-mode: multiply;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='300' height='300' filter='url(%23n)'/></svg>");
+    }
+
+    #login-screen .cardex-spotlight {
+      position: absolute;
+      top: -14%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 640px;
+      height: 640px;
+      max-width: 140vw;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.16) 0%, rgba(14, 165, 233, 0.06) 42%, transparent 70%);
+      filter: blur(6px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    #login-screen .fp-backdrop {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    #login-screen .draft-card {
+      position: absolute;
+      font-family: Georgia, serif;
+      line-height: 1;
+      color: var(--cx-royal);
+      opacity: 0.08;
+      filter: blur(1px);
+      will-change: transform;
+      animation: cx-drift 50s ease-in-out infinite;
+    }
+
+    #login-screen .dc-1 { top: 6%;  left: 5%;  font-size: 7.5rem; animation-duration: 54s; animation-delay: -6s; }
+    #login-screen .dc-2 { top: 64%; left: 3%;  font-size: 5.2rem; animation-duration: 40s; animation-delay: -18s; color: var(--cx-red); opacity: 0.07; }
+    #login-screen .dc-3 { top: 12%; right: 5%; font-size: 6.4rem; animation-duration: 46s; animation-delay: -2s;  color: var(--cx-red); opacity: 0.06; }
+    #login-screen .dc-4 { top: 66%; right: 7%; font-size: 7.8rem; animation-duration: 60s; animation-delay: -30s; }
+    #login-screen .dc-5 { top: 38%; left: -3%; font-size: 4.4rem; animation-duration: 36s; animation-delay: -10s; opacity: 0.05; }
+    #login-screen .dc-6 { top: 85%; right: 26%; font-size: 3.8rem; animation-duration: 44s; animation-delay: -22s; color: var(--cx-red); opacity: 0.06; }
+
+    @keyframes cx-drift {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      50%      { transform: translate(14px, -20px) rotate(5deg); }
+    }
+
+    /* ---------- panel ---------- */
+    #login-screen .fp-wrap {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+
+    #login-screen .fp-panel {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      padding: 44px 38px 30px;
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.86));
+      border: 1px solid rgba(29, 78, 216, 0.18);
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.6),
+        0 30px 60px -20px rgba(15, 23, 42, 0.25),
+        0 0 80px -24px rgba(59, 130, 246, 0.25);
+      backdrop-filter: blur(14px) saturate(120%);
+      -webkit-backdrop-filter: blur(14px) saturate(120%);
+      animation: cx-panel-rise 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+
+    #login-screen .fp-panel::before {
+      content: "";
+      position: absolute;
+      inset: 8px;
+      border: 1px solid rgba(29, 78, 216, 0.12);
+      border-radius: 18px;
+      pointer-events: none;
+    }
+
+    @keyframes cx-panel-rise {
+      from { opacity: 0; transform: translateY(18px) scale(0.98); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* ---------- dealt hand / wordmark ---------- */
+    #login-screen .fp-logo {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    #login-screen .fp-logo-cards {
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      height: 64px;
+      margin-bottom: 16px;
+    }
+
+    #login-screen .mini {
+      width: 40px;
+      height: 56px;
+      border-radius: 7px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: Georgia, serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      background: linear-gradient(160deg, #ffffff, #f1f5f9);
+      border: 1px solid rgba(15, 23, 42, 0.18);
+      box-shadow: 0 8px 16px rgba(15, 23, 42, 0.16);
+      opacity: 0;
+    }
+
+    #login-screen .mini::before,
+    #login-screen .mini::after {
+      position: absolute;
+      font-size: 0.55rem;
+      line-height: 1;
+    }
+
+    #login-screen .mini::before { top: 4px; left: 4px; }
+    #login-screen .mini::after  { bottom: 4px; right: 4px; transform: rotate(180deg); }
+
+    #login-screen .cx-suit-spade,
+    #login-screen .cx-suit-club { color: var(--cx-ink); }
+    #login-screen .cx-suit-heart { color: var(--cx-red); }
+
+    #login-screen .cx-suit-spade::before, #login-screen .cx-suit-spade::after { content: "♠"; }
+    #login-screen .cx-suit-heart::before, #login-screen .cx-suit-heart::after { content: "♥"; }
+    #login-screen .cx-suit-club::before,  #login-screen .cx-suit-club::after  { content: "♣"; }
+
+    #login-screen .mini-1 { margin-right: -10px; animation: cx-deal-1 560ms cubic-bezier(0.2, 0.8, 0.2, 1) 80ms both; }
+    #login-screen .mini-2 { z-index: 2; animation: cx-deal-2 560ms cubic-bezier(0.2, 0.8, 0.2, 1) 220ms both; }
+    #login-screen .mini-3 { margin-left: -10px; animation: cx-deal-3 560ms cubic-bezier(0.2, 0.8, 0.2, 1) 360ms both; }
+
+    @keyframes cx-deal-1 { from { opacity: 0; transform: translateY(-36px) rotate(0deg); } to { opacity: 1; transform: translateY(6px) rotate(-10deg); } }
+    @keyframes cx-deal-2 { from { opacity: 0; transform: translateY(-36px) rotate(0deg); } to { opacity: 1; transform: translateY(-4px) rotate(0deg); } }
+    @keyframes cx-deal-3 { from { opacity: 0; transform: translateY(-36px) rotate(0deg); } to { opacity: 1; transform: translateY(6px) rotate(10deg); } }
+
+    #login-screen .fp-title {
+      margin: 0 0 10px;
+      text-align: center;
+      font-family: "Fraunces", Georgia, serif;
+      font-weight: 900;
+      font-size: clamp(2.1rem, 6vw, 2.85rem);
+      letter-spacing: 0.04em;
+      background: linear-gradient(100deg, var(--cx-royal) 0%, var(--cx-royal-bright) 30%, var(--cx-sky) 48%, var(--cx-royal-bright) 66%, var(--cx-royal) 100%);
+      background-size: 220% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      text-shadow: 0 0 34px rgba(59, 130, 246, 0.14);
+      animation: cx-sheen 2600ms ease-out 640ms both;
+    }
+
+    @keyframes cx-sheen {
+      0%   { background-position: 130% 0; opacity: 0; }
+      25%  { opacity: 1; }
+      100% { background-position: -30% 0; opacity: 1; }
+    }
+
+    #login-screen .cx-divider {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    #login-screen .cx-divider span {
+      width: 38px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(29, 78, 216, 0.45));
+    }
+
+    #login-screen .cx-divider span:last-child {
+      background: linear-gradient(90deg, rgba(29, 78, 216, 0.45), transparent);
+    }
+
+    #login-screen .cx-divider i {
+      font-style: normal;
+      color: var(--cx-gold);
+      font-size: 0.7rem;
+    }
+
+    #login-screen .fp-tagline {
+      text-align: center;
+      font-family: "Fraunces", Georgia, serif;
+      font-style: italic;
+      font-weight: 500;
+      font-size: 0.98rem;
+      color: var(--cx-ink-dim);
+    }
+
+    /* ---------- form ---------- */
+    #login-screen .form-group {
+      margin-bottom: 16px;
+      text-align: left;
+    }
+
+    #login-screen .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-family: "Inter", sans-serif;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--cx-ink-dim);
+    }
+
+    #login-screen .cx-input-wrap {
+      position: relative;
+    }
+
+    #login-screen .cx-input-wrap svg {
+      position: absolute;
+      top: 50%;
+      left: 12px;
+      transform: translateY(-50%);
+      width: 15px;
+      height: 15px;
+      color: var(--cx-royal-bright);
+      pointer-events: none;
+    }
+
+    #login-screen .form-group input {
+      width: 100%;
+      padding: 12px 14px 12px 38px;
+      border-radius: 12px;
+      border: 1.5px solid rgba(29, 78, 216, 0.22);
+      background: rgba(241, 245, 249, 0.9);
+      color: var(--cx-ink);
+      font-family: "Inter", sans-serif;
+      font-size: 0.95rem;
+      transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+    }
+
+    #login-screen .form-group input::placeholder {
+      color: rgba(100, 116, 139, 0.55);
+    }
+
+    #login-screen .form-group input:focus,
+    #login-screen .form-group input:focus-visible {
+      outline: none;
+      border-color: var(--cx-royal);
+      background: #ffffff;
+      box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.15), 0 0 24px rgba(29, 78, 216, 0.10);
+    }
+
+    /* ---------- CTA ---------- */
+    #login-screen .btn-primary {
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      margin-top: 6px;
+      padding: 13px 20px;
+      border: none;
+      border-radius: 999px;
+      background: linear-gradient(180deg, var(--cx-gold-bright), var(--cx-gold) 60%, var(--cx-gold-deep));
+      color: #3b2404;
+      font-family: "Inter", sans-serif;
+      font-weight: 800;
+      font-size: 0.98rem;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      box-shadow: 0 10px 24px -8px rgba(245, 158, 11, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+      transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+    }
+
+    #login-screen .btn-primary:hover {
+      filter: brightness(1.05);
+      transform: translateY(-1px);
+      box-shadow: 0 14px 30px -8px rgba(245, 158, 11, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    }
+
+    #login-screen .btn-primary:active {
+      transform: translateY(0);
+      filter: brightness(0.97);
+    }
+
+    #login-screen .btn-primary:focus-visible {
+      outline: 2px solid var(--cx-royal);
+      outline-offset: 2px;
+    }
+
+    #login-screen .btn-primary::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -60%;
+      width: 40%;
+      height: 100%;
+      background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+      transform: skewX(-20deg);
+      transition: left 520ms ease;
+    }
+
+    #login-screen .btn-primary:hover::after {
+      left: 130%;
+    }
+
+    /* ---------- error ---------- */
+    #login-screen .error {
+      margin-top: 12px;
+      text-align: center;
+      font-family: "Inter", sans-serif;
+      font-size: 0.85rem;
+      color: var(--cx-red);
+      border-radius: 10px;
+    }
+
+    #login-screen .error:not(:empty) {
+      padding: 8px 10px;
+      background: rgba(225, 29, 72, 0.08);
+      border: 1px solid rgba(225, 29, 72, 0.28);
+      animation: cx-shake 420ms ease;
+    }
+
+    @keyframes cx-shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-4px); }
+      40% { transform: translateX(4px); }
+      60% { transform: translateX(-3px); }
+      80% { transform: translateX(3px); }
+    }
+
+    /* ---------- footer ---------- */
+    #login-screen .fp-foot {
+      margin-top: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-align: center;
+      font-family: "Inter", sans-serif;
+      font-size: 0.72rem;
+      color: rgba(100, 116, 139, 0.75);
+    }
+
+    #login-screen .fp-foot .cx-sep {
+      color: var(--cx-gold);
+      font-size: 0.6rem;
+    }
+
+    /* ---------- responsive & motion ---------- */
+    @media (max-width: 480px) {
+      #login-screen .fp-panel { padding: 34px 22px 24px; max-width: 360px; }
+      #login-screen .fp-title { font-size: 2rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #login-screen .draft-card,
+      #login-screen .fp-panel,
+      #login-screen .mini,
+      #login-screen .mini-1,
+      #login-screen .mini-2,
+      #login-screen .mini-3,
+      #login-screen .fp-title,
+      #login-screen .btn-primary::after,
+      #login-screen .error:not(:empty) {
+        animation: none !important;
+        transition: none !important;
+        opacity: 1 !important;
+        background-position: 0 0 !important;
+      }
+    }
+  </style>
 </head>
 <body>
-<div id="app">
-<!-- LOGIN SCREEN -->
-<div id="login-screen" class="screen">
-<div class="cardex-stage">
-<div class="cardex-spotlight"></div>
-<div class="fp-backdrop">
-<div class="draft-card dc-1">♠</div>
-<div class="draft-card dc-2">♥</div>
-<div class="draft-card dc-3">♦</div>
-<div class="draft-card dc-4">♣</div>
-<div class="draft-card dc-5">♠</div>
-<div class="draft-card dc-6">♥</div>
-</div>
-<div class="fp-wrap">
-<div class="fp-panel">
-<div class="fp-logo">
-<div class="fp-logo-cards">
-<div class="mini mini-1 cx-suit-spade"></div>
-<div class="mini mini-2 cx-suit-heart"></div>
-<div class="mini mini-3 cx-suit-club"></div>
-</div>
-<h1 class="fp-title">CARDEX</h1>
-<div class="cx-divider"><span></span><i>♦</i><span></span></div>
-<div class="fp-tagline">Three hands, one deck, the whole table watching.</div>
-</div>
-<div class="form-group">
-<label for="login-username">Username</label>
-<div class="cx-input-wrap">
-<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-<circle cx="12" cy="8" r="3.4"></circle>
-<path d="M4.5 20c1.4-4 4-6 7.5-6s6.1 2 7.5 6"></path>
-</svg>
-<input id="login-username" type="text" autocomplete="off" placeholder="Your name at the table" />
-</div>
-</div>
-<div class="form-group">
-<label for="login-pin">PIN</label>
-<div class="cx-input-wrap">
-<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-<rect x="5" y="10.5" width="14" height="9" rx="2"></rect>
-<path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"></path>
-</svg>
-<input id="login-pin" type="password" autocomplete="off" placeholder="····" />
-</div>
-</div>
-<button id="login-button" class="btn-primary btn-block">
-Login / Register
-</button>
-<div id="login-error" class="error"></div>
-<div class="fp-foot">
-<span>v1.0</span><span class="cx-sep">♦</span><span>Private tables</span><span class="cx-sep">♦</span><span>Play responsibly</span>
-</div>
-</div>
-</div>
-</div>
-</div>
-<!-- MENU SCREEN -->
-<div id="menu-screen" class="screen hidden">
-<div class="fp-wrap">
-<div class="fp-backdrop">
-<div class="draft-card dc-1">♠</div>
-<div class="draft-card dc-2">♥</div>
-<div class="draft-card dc-3">♦</div>
-<div class="draft-card dc-4">♣</div>
-</div>
-<div class="fp-panel" style="width: min(96%, 760px);">
-<div class="fp-menu-head">
-<div id="menu-avatar" class="fp-avatar">?</div>
-<div>
-<div id="menu-username" class="fp-name">Player</div>
-<div class="fp-cash-chip">
-$ <span id="menu-cash">0</span>
-</div>
-</div>
-</div>
-<div id="menu-message" class="message"></div>
-<div class="fp-menu-grid">
-<button id="show-create-room-button" class="btn-primary">
-Create Room
-</button>
-<button id="show-join-room-button" class="btn-primary">
-Join Room
-</button>
-<button id="claim-daily-button" class="btn-secondary daily-claim-btn btn-block">
-🎁 Claim Daily +10,000
-</button>
-<button id="show-send-money-button" class="btn-secondary">
-💸 Send Money
-</button>
-<button id="show-transaction-history-button" class="btn-secondary">
-📊 Transaction History
-</button>
-<button id="admin-button" class="btn-ghost">
-Admin
-</button>
-<button id="logout-button" class="btn-ghost">
-Logout
-</button>
-</div>
-<!-- CREATE ROOM FORM -->
-<div id="create-room-form" class="panel-sub hidden">
-<h3>Create Room</h3>
-<div class="form-group">
-<label for="create-min-bet">Minimum Bet</label>
-<select id="create-min-bet">
-<option value="100">100</option>
-<option value="1000">1K</option>
-<option value="10000">10K</option>
-<option value="50000">50K</option>
-<option value="100000" selected>100K</option>
-<option value="500000">500K</option>
-<option value="1000000">1M</option>
-<option value="5000000">5M</option>
-<option value="10000000">10M</option>
-<option value="50000000">50M</option>
-<option value="100000000">100M</option>
-</select>
-</div>
-<div class="form-group">
-<label for="create-arrange-timer">Arrange Timer</label>
-<select id="create-arrange-timer">
-<option value="30">30 Seconds</option>
-<option value="60" selected>60 Seconds</option>
-<option value="90">90 Seconds</option>
-</select>
-</div>
-<div class="form-group">
-<label>Ready Timer</label>
-<div class="fixed-setting">🔒 Fixed: 30 seconds</div>
-</div>
-<div class="form-group">
-<label>Bot Difficulty</label>
-<div class="fixed-setting">🔒 Fixed: Hard</div>
-</div>
-<label class="fp-check">
-<input id="create-auto-fill-bots" type="checkbox" checked />
-Auto-fill empty seats with bots
-</label>
-<label class="fp-check">
-<input id="create-scoop-bonus" type="checkbox" checked />
-Scoop bonus (+3)
-</label>
-<label class="fp-check">
-<input id="create-auto-arrange" type="checkbox" />
-Auto-arrange cards
-</label>
-<div class="controls">
-<button id="create-room-button" class="btn-primary">
-Create Room
-</button>
-<button id="cancel-create-room-button" class="btn-secondary">
-Cancel
-</button>
-</div>
-<div id="create-room-error" class="error"></div>
-</div>
-<!-- JOIN ROOM FORM -->
-<div id="join-room-form" class="panel-sub hidden">
-<h3>Join Room</h3>
-<div class="form-group">
-<label for="join-room-code">Room Code</label>
-<input id="join-room-code" type="text" autocomplete="off" />
-</div>
-<div class="controls">
-<button id="join-room-button" class="btn-primary">
-Join Room
-</button>
-<button id="cancel-join-room-button" class="btn-secondary">
-Cancel
-</button>
-</div>
-<div id="join-room-error" class="error"></div>
-</div>
-<!-- LIVE TABLES -->
-<div class="fp-lobby">
-<div class="fp-lobby-head">
-<div class="fp-lobby-title">🎥 Live Tables</div>
-<div id="lobby-room-count" class="fp-lobby-count">0 live</div>
-</div>
-<div id="lobby-rooms-list" class="lobby-rooms-list"></div>
-<div class="fp-lobby-hint">
-Idle tables auto-close after 3 minutes
-</div>
-</div>
-</div>
-</div>
-</div>
-<!-- ROOM SCREEN -->
-<div id="room-screen" class="screen hidden">
-<div class="pg-table">
-<div class="mat"></div>
-<div class="mat-logo">CARDEX</div>
-<div id="banner" class="banner hidden"></div>
-<!-- HUD -->
-<div class="hud">
-<button id="exit-room-button" class="hud-back" title="Exit Room">
-←
-</button>
-<div class="hud-right hud-badges">
-<div class="hud-badge" id="hud-cash">0</div>
-<div class="hud-badge" id="pg-round">Round 0</div>
-<div class="hud-badge" id="pg-pot">1 pt = 0</div>
-</div>
-<button id="room-admin-button" class="pg-btn pg-icon-btn" title="Admin">
-⚙
-</button>
-</div>
-      <!-- SPECTATOR GALLERY (visible in all room phases) -->
-      <div id="spectator-bar" class="spectator-bar hidden"></div>
-<!-- SEATS -->
-<div id="seat-top" class="seat seat-top"></div>
-<div id="seat-left" class="seat seat-left"></div>
-<div id="seat-right" class="seat seat-right"></div>
-<div id="seat-bottom" class="seat seat-bottom"></div>
-<!-- OPPONENT CARD BACK CLUSTERS -->
-<div id="cluster-top" class="cluster cluster-top hidden"></div>
-<div id="cluster-left" class="cluster cluster-left hidden"></div>
-<div id="cluster-right" class="cluster cluster-right hidden"></div>
-<!-- CENTER TIMER -->
-<div class="table-center">
-<div id="pg-timer" class="pg-timer hidden">--</div>
-</div>
-<!-- ROOM MESSAGE -->
-<div id="room-message" class="pg-message"></div>
-<!-- LOBBY SECTION -->
-<div id="lobby-section" class="pg-panel hidden">
-<h3>Lobby</h3>
-<div class="panel-sub">
-<div>
-Room Code:
-<strong id="room-code">-</strong>
-</div>
-<div>
-Status:
-<span id="room-status">lobby</span>
-</div>
-<div>
-Round:
-<span id="room-round">0</span>
-</div>
-<div>
-Min Bet:
-<span id="room-min-bet">0</span>
-</div>
-<div>
-Pot:
-<span id="room-pot">0</span>
-</div>
-<div>
-Bot Level:
-<span id="room-bot-level">hard</span>
-</div>
-<div>
-Timer:
-<span id="room-timer">Off</span>
-</div>
-</div>
-<div class="panel-sub">
-<h4>Players</h4>
-<div id="player-list"></div>
-</div>
-<div class="panel-sub">
-<h4>Spectators</h4>
-<div id="spectator-list"></div>
-</div>
-<div class="pg-actions">
-<button id="start-room-button" class="pg-btn primary hidden">
-Start Game
-</button>
-<button id="fill-bots-button" class="pg-btn hidden">
-Fill Bots
-</button>
-<button id="take-seat-button" class="pg-btn hidden">
-Take Seat
-</button>
-<button id="join-game-button" class="pg-btn hidden">
-Join Game
-</button>
-<button id="leave-room-button" class="pg-btn">
-Exit Room
-</button>
-</div>
-</div>
-<!-- ARRANGE SECTION -->
-<div id="arrange-section" class="hidden">
-<div id="arrange-status" class="pg-message" style="top: 18%;"></div>
-<div id="table-my-rows" class="table-my-rows"></div>
-<div class="arrange-controls">
-<button id="open-zoom-button" class="pg-btn primary">
-Arrange
-</button>
-<button id="auto-arrange-button" class="pg-btn hidden">
-Auto
-</button>
-<button id="clear-arrangement-button" class="pg-btn">
-Reset
-</button>
-<button id="submit-arrangement-button" class="pg-btn primary">
-Submit
-</button>
-</div>
-<!-- Legacy controls required by app.js -->
-<div class="hidden">
-<button id="assign-front-button">Front</button>
-<button id="assign-middle-button">Middle</button>
-<button id="assign-back-button">Back</button>
-<div id="hand-cards"></div>
-<div id="front-cards"></div>
-<div id="middle-cards"></div>
-<div id="back-cards"></div>
-</div>
-</div>
-<!-- ZOOM ARRANGE VIEW -->
-<div id="zoom-view" class="zoom-view hidden">
-<div class="zoom-head">
-<span>Arrange Your Cards</span>
-<div id="zoom-timer" class="pg-timer hidden">--</div>
-</div>
-<div class="zoom-rows">
-<div class="my-rows">
-<div class="my-row">
-<div id="label-front" class="row-label"></div>
-<div id="row-front" class="row-cards"></div>
-</div>
-<div class="my-row">
-<div id="label-middle" class="row-label"></div>
-<div id="row-middle" class="row-cards"></div>
-</div>
-<div class="my-row">
-<div id="label-back" class="row-label"></div>
-<div id="row-back" class="row-cards"></div>
-</div>
-</div>
-</div>
-<div class="zoom-controls">
-<button id="ready-arrange-button" class="ready-btn">
-Ready
-</button>
-<button id="swap-mid-back-button" class="pg-btn">
-Swap Mid/Back
-</button>
-</div>
-</div>
-<!-- REVEAL LAYER -->
-<div id="reveal-layer" class="reveal-layer hidden">
-<div id="reveal-top" class="reveal-slot reveal-top"></div>
-<div id="reveal-left" class="reveal-slot reveal-left"></div>
-<div id="reveal-right" class="reveal-slot reveal-right"></div>
-<div id="reveal-bottom" class="reveal-slot reveal-bottom"></div>
-<button id="reveal-skip" class="pg-btn">
-Skip ▸▸
-</button>
-</div>
-<!-- READY AREA -->
-<div id="ready-area" class="ready-area hidden">
-<div id="ready-list" class="pg-ready-list"></div>
-<div class="pg-actions">
-<button id="ready-button" class="ready-btn hidden">
-Ready for Next Round
-</button>
-<button id="force-start-button" class="pg-btn hidden">
-Force Start
-</button>
-<!-- Join Game Button for Ready Area -->
-<button id="join-game-ready-button" class="pg-btn primary hidden">
-Join Game
-</button>
-<button id="view-results-button" class="pg-btn">
-View Full Results
-</button>
-</div>
-</div>
-<!-- SCORE PANEL -->
-<div id="score-panel" class="score-panel">
-<div class="sp-row">
-<span>Front</span>
-<span id="sp-front"></span>
-</div>
-<div class="sp-row">
-<span>Mid</span>
-<span id="sp-mid"></span>
-</div>
-<div class="sp-row">
-<span>Back</span>
-<span id="sp-back"></span>
-</div>
-<div class="sp-row sp-total">
-<span>Total</span>
-<span id="sp-total"></span>
-</div>
-</div>
-<!-- RESULTS SECTION -->
-<div id="results-section" class="pg-panel hidden">
-<button id="close-results-button" class="close-panel-btn">
-✕
-</button>
-<div id="result-summary" class="pg-result-summary"></div>
-<div id="result-boards" class="pg-boards"></div>
-<table id="result-table" class="hidden"></table>
-<div id="result-details" class="hidden"></div>
-<!-- Join Game Button for Results Overlay -->
-<div class="pg-actions" style="margin-top: 16px;">
-<button id="join-game-results-button" class="pg-btn primary hidden">
-Join Game
-</button>
-</div>
-</div>
-</div>
-</div>
-<!-- ADMIN SCREEN -->
-<div id="admin-screen" class="screen hidden">
-<div class="panel wide-panel">
-<div class="controls">
-<button id="admin-back-button" class="btn-secondary">
-← Back
-</button>
-</div>
-<h2>Admin Panel</h2>
-<div id="admin-message" class="message"></div>
-<div class="admin-grid">
-<div class="admin-section">
-<h3>Player Management</h3>
-<div class="form-group">
-<label for="admin-user-search">Search Users</label>
-<input id="admin-user-search" type="text" autocomplete="off" />
-</div>
-<div id="admin-user-list" class="admin-user-list"></div>
-<div class="admin-divider"></div>
-<div class="form-group">
-<label for="admin-player-username">Username</label>
-<input id="admin-player-username" type="text" autocomplete="off" />
-</div>
-<div class="controls">
-<button id="admin-load-player-button" class="btn-secondary">
-Load Player
-</button>
-</div>
-<div id="admin-player-info" class="panel-sub"></div>
-<div class="form-group">
-<label for="admin-display-name">Display Name</label>
-<input id="admin-display-name" type="text" autocomplete="off" />
-</div>
-<div class="controls">
-<button id="admin-save-name-button" class="btn-secondary">
-Save Display Name
-</button>
-</div>
-<div class="form-group">
-<label for="admin-cash-amount">Cash Amount</label>
-<input id="admin-cash-amount" type="number" />
-</div>
-<div class="form-group">
-<label for="admin-cash-reason">Reason</label>
-<input id="admin-cash-reason" type="text" autocomplete="off" />
-</div>
-<div class="controls">
-<button id="admin-add-cash-button" class="btn-primary">
-Add Cash
-</button>
-<button id="admin-deduct-cash-button" class="btn-secondary">
-Deduct Cash
-</button>
-<button id="admin-set-cash-button" class="btn-secondary">
-Set Cash
-</button>
-</div>
-</div>
-<div class="admin-section">
-<h3>Current Room Settings</h3>
-<div class="form-group">
-<label for="admin-room-min-bet">Minimum Bet</label>
-<select id="admin-room-min-bet">
-<option value="100">100</option>
-<option value="1000">1K</option>
-<option value="10000">10K</option>
-<option value="50000">50K</option>
-<option value="100000">100K</option>
-<option value="500000">500K</option>
-<option value="1000000">1M</option>
-<option value="5000000">5M</option>
-<option value="10000000">10M</option>
-<option value="50000000">50M</option>
-<option value="100000000">100M</option>
-</select>
-</div>
-<div class="form-group">
-<label for="admin-room-arrange-timer">Arrange Timer</label>
-<select id="admin-room-arrange-timer">
-<option value="30">30 Seconds</option>
-<option value="60">60 Seconds</option>
-<option value="90">90 Seconds</option>
-</select>
-</div>
-<div class="form-group">
-<label>Ready Timer</label>
-<div class="fixed-setting">🔒 Fixed: 30 seconds</div>
-</div>
-<div class="form-group">
-<label>Bot Difficulty</label>
-<div class="fixed-setting">🔒 Fixed: Hard</div>
-</div>
-<label class="fp-check">
-<input id="admin-room-auto-fill-bots" type="checkbox" checked />
-Auto-fill bots
-</label>
-<label class="fp-check">
-<input id="admin-room-scoop-bonus" type="checkbox" checked />
-Scoop bonus +3
-</label>
-<div class="controls">
-<button id="admin-save-room-button" class="btn-primary">
-Save Room Settings
-</button>
-<button id="admin-fill-bots-button" class="btn-secondary">
-Fill Bots
-</button>
-<button id="admin-force-start-button" class="btn-secondary">
-Force Start / Next Round
-</button>
-</div>
-</div>
-</div>
-</div>
-</div>
-<!-- SEND MONEY OVERLAY -->
-<div id="send-money-form" class="hidden">
-<div class="send-modal">
-<h3>💸 Send Money</h3>
-<div class="form-group">
-<label for="send-username">Recipient Username</label>
-<input id="send-username" type="text" autocomplete="off" />
-</div>
-<div class="form-group">
-<label for="send-amount">Amount</label>
-<input id="send-amount" type="number" min="1" />
-</div>
-<div class="form-group">
-<label for="send-note">Note (optional)</label>
-<input id="send-note" type="text" autocomplete="off" />
-</div>
-<div id="send-money-error" class="error"></div>
-<div id="send-money-message" class="message"></div>
-<div class="controls">
-<button id="send-money-button" class="btn-primary">
-Send
-</button>
-<button id="cancel-send-money-button" class="btn-secondary">
-Cancel
-</button>
-</div>
-</div>
-</div>
-<!-- TRANSACTION HISTORY PANEL -->
-<div id="transaction-history-panel" class="hidden">
-<div class="tx-modal">
-<button id="close-transaction-history-button" class="close-panel-btn">
-✕
-</button>
-<h3>Recent Transactions</h3>
-<div id="transaction-history" class="tx-list"></div>
-</div>
-</div>
-<!-- APP ENTRY POINT -->
-<script type="module" src="./js/app.js"></script>
-<!-- FEATURE 1: LEADERBOARDS -->
-<script type="module" src="./js/leaderboard.js"></script>
-<!-- FEATURE 2: EMOJI SPLASH -->
-<script type="module" src="./js/emoji.js"></script>
+  <div id="app">
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="screen">
+      <div class="cardex-stage">
+        <div class="cardex-spotlight"></div>
+        <div class="fp-backdrop">
+          <div class="draft-card dc-1">♠</div>
+          <div class="draft-card dc-2">♥</div>
+          <div class="draft-card dc-3">♦</div>
+          <div class="draft-card dc-4">♣</div>
+          <div class="draft-card dc-5">♠</div>
+          <div class="draft-card dc-6">♥</div>
+        </div>
+
+        <div class="fp-wrap">
+          <div class="fp-panel">
+            <div class="fp-logo">
+              <div class="fp-logo-cards">
+                <div class="mini mini-1 cx-suit-spade"></div>
+                <div class="mini mini-2 cx-suit-heart"></div>
+                <div class="mini mini-3 cx-suit-club"></div>
+              </div>
+              <h1 class="fp-title">CARDEX</h1>
+              <div class="cx-divider"><span></span><i>♦</i><span></span></div>
+              <div class="fp-tagline">Three hands, one deck, the whole table watching.</div>
+            </div>
+
+            <div class="form-group">
+              <label for="login-username">Username</label>
+              <div class="cx-input-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="8" r="3.4"></circle>
+                  <path d="M4.5 20c1.4-4 4-6 7.5-6s6.1 2 7.5 6"></path>
+                </svg>
+                <input id="login-username" type="text" autocomplete="off" placeholder="Your name at the table" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="login-pin">PIN</label>
+              <div class="cx-input-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="5" y="10.5" width="14" height="9" rx="2"></rect>
+                  <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"></path>
+                </svg>
+                <input id="login-pin" type="password" autocomplete="off" placeholder="····" />
+              </div>
+            </div>
+
+            <button id="login-button" class="btn-primary btn-block">
+              Login / Register
+            </button>
+
+            <div id="login-error" class="error"></div>
+
+            <div class="fp-foot">
+              <span>v1.0</span><span class="cx-sep">♦</span><span>Private tables</span><span class="cx-sep">♦</span><span>Play responsibly</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MENU SCREEN -->
+    <div id="menu-screen" class="screen hidden">
+      <div class="fp-wrap">
+        <div class="fp-backdrop">
+          <div class="draft-card dc-1">♠</div>
+          <div class="draft-card dc-2">♥</div>
+          <div class="draft-card dc-3">♦</div>
+          <div class="draft-card dc-4">♣</div>
+        </div>
+
+        <div class="fp-panel" style="width: min(96%, 760px);">
+          <div class="fp-menu-head">
+            <div id="menu-avatar" class="fp-avatar">?</div>
+            <div>
+              <div id="menu-username" class="fp-name">Player</div>
+              <div class="fp-cash-chip">
+                $ <span id="menu-cash">0</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="menu-message" class="message"></div>
+
+          <div class="fp-menu-grid">
+            <button id="show-create-room-button" class="btn-primary">
+              Create Room
+            </button>
+            <button id="show-join-room-button" class="btn-primary">
+              Join Room
+            </button>
+            <button id="claim-daily-button" class="btn-secondary daily-claim-btn btn-block">
+              🎁 Claim Daily +10,000
+            </button>
+            <button id="show-send-money-button" class="btn-secondary">
+              💸 Send Money
+            </button>
+            <button id="show-transaction-history-button" class="btn-secondary">
+              📊 Transaction History
+            </button>
+            <button id="admin-button" class="btn-ghost">
+              Admin
+            </button>
+            <button id="logout-button" class="btn-ghost">
+              Logout
+            </button>
+          </div>
+
+          <!-- CREATE ROOM FORM -->
+          <div id="create-room-form" class="panel-sub hidden">
+            <h3>Create Room</h3>
+
+            <div class="form-group">
+              <label for="create-min-bet">Minimum Bet</label>
+              <select id="create-min-bet">
+                <option value="100">100</option>
+                <option value="1000">1K</option>
+                <option value="10000">10K</option>
+                <option value="50000">50K</option>
+                <option value="100000" selected>100K</option>
+                <option value="500000">500K</option>
+                <option value="1000000">1M</option>
+                <option value="5000000">5M</option>
+                <option value="10000000">10M</option>
+                <option value="50000000">50M</option>
+                <option value="100000000">100M</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="create-arrange-timer">Arrange Timer</label>
+              <select id="create-arrange-timer">
+                <option value="30">30 Seconds</option>
+                <option value="60" selected>60 Seconds</option>
+                <option value="90">90 Seconds</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Ready Timer</label>
+              <div class="fixed-setting">🔒 Fixed: 30 seconds</div>
+            </div>
+
+            <div class="form-group">
+              <label>Bot Difficulty</label>
+              <div class="fixed-setting">🔒 Fixed: Hard</div>
+            </div>
+
+            <label class="fp-check">
+              <input id="create-auto-fill-bots" type="checkbox" checked />
+              Auto-fill empty seats with bots
+            </label>
+
+            <label class="fp-check">
+              <input id="create-scoop-bonus" type="checkbox" checked />
+              Scoop bonus (+3)
+            </label>
+
+            <label class="fp-check">
+              <input id="create-auto-arrange" type="checkbox" />
+              Auto-arrange cards
+            </label>
+
+            <div class="controls">
+              <button id="create-room-button" class="btn-primary">
+                Create Room
+              </button>
+              <button id="cancel-create-room-button" class="btn-secondary">
+                Cancel
+              </button>
+            </div>
+            <div id="create-room-error" class="error"></div>
+          </div>
+
+          <!-- JOIN ROOM FORM -->
+          <div id="join-room-form" class="panel-sub hidden">
+            <h3>Join Room</h3>
+
+            <div class="form-group">
+              <label for="join-room-code">Room Code</label>
+              <input id="join-room-code" type="text" autocomplete="off" />
+            </div>
+
+            <div class="controls">
+              <button id="join-room-button" class="btn-primary">
+                Join Room
+              </button>
+              <button id="cancel-join-room-button" class="btn-secondary">
+                Cancel
+              </button>
+            </div>
+            <div id="join-room-error" class="error"></div>
+          </div>
+
+          <!-- LIVE TABLES -->
+          <div class="fp-lobby">
+            <div class="fp-lobby-head">
+              <div class="fp-lobby-title">🎥 Live Tables</div>
+              <div id="lobby-room-count" class="fp-lobby-count">0 live</div>
+            </div>
+            <div id="lobby-rooms-list" class="lobby-rooms-list"></div>
+            <div class="fp-lobby-hint">
+              Idle tables auto-close after 3 minutes
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROOM SCREEN -->
+    <div id="room-screen" class="screen hidden">
+      <div class="pg-table">
+        <div class="mat"></div>
+        <div class="mat-logo">CARDEX</div>
+        <div id="banner" class="banner hidden"></div>
+
+        <!-- HUD -->
+        <div class="hud">
+          <button id="exit-room-button" class="hud-back" title="Exit Room">
+            ←
+          </button>
+          <div class="hud-right hud-badges">
+            <div class="hud-badge" id="hud-cash">0</div>
+            <div class="hud-badge" id="pg-round">Round 0</div>
+            <div class="hud-badge" id="pg-pot">1 pt = 0</div>
+          </div>
+          <button id="room-admin-button" class="pg-btn pg-icon-btn" title="Admin">
+            ⚙
+          </button>
+        </div>
+
+        <!-- SPECTATOR GALLERY (visible in all room phases) -->
+        <div id="spectator-bar" class="spectator-bar hidden"></div>
+
+        <!-- SEATS -->
+        <div id="seat-top" class="seat seat-top"></div>
+        <div id="seat-left" class="seat seat-left"></div>
+        <div id="seat-right" class="seat seat-right"></div>
+        <div id="seat-bottom" class="seat seat-bottom"></div>
+
+        <!-- OPPONENT CARD BACK CLUSTERS -->
+        <div id="cluster-top" class="cluster cluster-top hidden"></div>
+        <div id="cluster-left" class="cluster cluster-left hidden"></div>
+        <div id="cluster-right" class="cluster cluster-right hidden"></div>
+
+        <!-- CENTER TIMER -->
+        <div class="table-center">
+          <div id="pg-timer" class="pg-timer hidden">--</div>
+        </div>
+
+        <!-- ROOM MESSAGE -->
+        <div id="room-message" class="pg-message"></div>
+
+        <!-- LOBBY SECTION -->
+        <div id="lobby-section" class="pg-panel hidden">
+          <h3>Lobby</h3>
+
+          <div class="panel-sub">
+            <div>
+              Room Code:
+              <strong id="room-code">-</strong>
+            </div>
+            <div>
+              Status:
+              <span id="room-status">lobby</span>
+            </div>
+            <div>
+              Round:
+              <span id="room-round">0</span>
+            </div>
+            <div>
+              Min Bet:
+              <span id="room-min-bet">0</span>
+            </div>
+            <div>
+              Pot:
+              <span id="room-pot">0</span>
+            </div>
+            <div>
+              Bot Level:
+              <span id="room-bot-level">hard</span>
+            </div>
+            <div>
+              Timer:
+              <span id="room-timer">Off</span>
+            </div>
+          </div>
+
+          <div class="panel-sub">
+            <h4>Players</h4>
+            <div id="player-list"></div>
+          </div>
+
+          <div class="panel-sub">
+            <h4>Spectators</h4>
+            <div id="spectator-list"></div>
+          </div>
+
+          <div class="pg-actions">
+            <button id="start-room-button" class="pg-btn primary hidden">
+              Start Game
+            </button>
+            <button id="fill-bots-button" class="pg-btn hidden">
+              Fill Bots
+            </button>
+            <button id="take-seat-button" class="pg-btn hidden">
+              Take Seat
+            </button>
+            <button id="join-game-button" class="pg-btn hidden">
+              Join Game
+            </button>
+            <button id="leave-room-button" class="pg-btn">
+              Exit Room
+            </button>
+          </div>
+        </div>
+
+        <!-- ARRANGE SECTION -->
+        <div id="arrange-section" class="hidden">
+          <div id="arrange-status" class="pg-message" style="top: 18%;"></div>
+
+          <div id="table-my-rows" class="table-my-rows"></div>
+
+          <div class="arrange-controls">
+            <button id="open-zoom-button" class="pg-btn primary">
+              Arrange
+            </button>
+            <button id="auto-arrange-button" class="pg-btn hidden">
+              Auto
+            </button>
+            <button id="clear-arrangement-button" class="pg-btn">
+              Reset
+            </button>
+            <button id="submit-arrangement-button" class="pg-btn primary">
+              Submit
+            </button>
+          </div>
+
+          <!-- Legacy controls required by app.js -->
+          <div class="hidden">
+            <button id="assign-front-button">Front</button>
+            <button id="assign-middle-button">Middle</button>
+            <button id="assign-back-button">Back</button>
+            <div id="hand-cards"></div>
+            <div id="front-cards"></div>
+            <div id="middle-cards"></div>
+            <div id="back-cards"></div>
+          </div>
+        </div>
+
+        <!-- ZOOM ARRANGE VIEW -->
+        <div id="zoom-view" class="zoom-view hidden">
+          <div class="zoom-head">
+            <span>Arrange Your Cards</span>
+            <div id="zoom-timer" class="pg-timer hidden">--</div>
+          </div>
+
+          <div class="zoom-rows">
+            <div class="my-rows">
+              <div class="my-row">
+                <div id="label-front" class="row-label"></div>
+                <div id="row-front" class="row-cards"></div>
+              </div>
+              <div class="my-row">
+                <div id="label-middle" class="row-label"></div>
+                <div id="row-middle" class="row-cards"></div>
+              </div>
+              <div class="my-row">
+                <div id="label-back" class="row-label"></div>
+                <div id="row-back" class="row-cards"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="zoom-controls">
+            <button id="ready-arrange-button" class="ready-btn">
+              Ready
+            </button>
+            <button id="swap-mid-back-button" class="pg-btn">
+              Swap Mid/Back
+            </button>
+          </div>
+        </div>
+
+        <!-- REVEAL LAYER -->
+        <div id="reveal-layer" class="reveal-layer hidden">
+          <div id="reveal-top" class="reveal-slot reveal-top"></div>
+          <div id="reveal-left" class="reveal-slot reveal-left"></div>
+          <div id="reveal-right" class="reveal-slot reveal-right"></div>
+          <div id="reveal-bottom" class="reveal-slot reveal-bottom"></div>
+          <button id="reveal-skip" class="pg-btn">
+            Skip ▸▸
+          </button>
+        </div>
+
+        <!-- READY AREA -->
+        <div id="ready-area" class="ready-area hidden">
+          <div id="ready-list" class="pg-ready-list"></div>
+          <div class="pg-actions">
+            <button id="ready-button" class="ready-btn hidden">
+              Ready for Next Round
+            </button>
+            <button id="force-start-button" class="pg-btn hidden">
+              Force Start
+            </button>
+            <!-- Join Game Button for Ready Area -->
+            <button id="join-game-ready-button" class="pg-btn primary hidden">
+              Join Game
+            </button>
+            <button id="view-results-button" class="pg-btn">
+              View Full Results
+            </button>
+          </div>
+        </div>
+
+        <!-- SCORE PANEL -->
+        <div id="score-panel" class="score-panel">
+          <div class="sp-row">
+            <span>Front</span>
+            <span id="sp-front"></span>
+          </div>
+          <div class="sp-row">
+            <span>Mid</span>
+            <span id="sp-mid"></span>
+          </div>
+          <div class="sp-row">
+            <span>Back</span>
+            <span id="sp-back"></span>
+          </div>
+          <div class="sp-row sp-total">
+            <span>Total</span>
+            <span id="sp-total"></span>
+          </div>
+        </div>
+
+        <!-- RESULTS SECTION -->
+        <div id="results-section" class="pg-panel hidden">
+          <button id="close-results-button" class="close-panel-btn">
+            ✕
+          </button>
+          <div id="result-summary" class="pg-result-summary"></div>
+          <div id="result-boards" class="pg-boards"></div>
+          <table id="result-table" class="hidden"></table>
+          <div id="result-details" class="hidden"></div>
+          <!-- Join Game Button for Results Overlay -->
+          <div class="pg-actions" style="margin-top: 16px;">
+            <button id="join-game-results-button" class="pg-btn primary hidden">
+              Join Game
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ADMIN SCREEN -->
+    <div id="admin-screen" class="screen hidden">
+      <div class="panel wide-panel">
+        <div class="controls">
+          <button id="admin-back-button" class="btn-secondary">
+            ← Back
+          </button>
+        </div>
+        <h2>Admin Panel</h2>
+        <div id="admin-message" class="message"></div>
+
+        <div class="admin-grid">
+          <div class="admin-section">
+            <h3>Player Management</h3>
+
+            <div class="form-group">
+              <label for="admin-user-search">Search Users</label>
+              <input id="admin-user-search" type="text" autocomplete="off" />
+            </div>
+
+            <div id="admin-user-list" class="admin-user-list"></div>
+
+            <div class="admin-divider"></div>
+
+            <div class="form-group">
+              <label for="admin-player-username">Username</label>
+              <input id="admin-player-username" type="text" autocomplete="off" />
+            </div>
+
+            <div class="controls">
+              <button id="admin-load-player-button" class="btn-secondary">
+                Load Player
+              </button>
+            </div>
+
+            <div id="admin-player-info" class="panel-sub"></div>
+
+            <div class="form-group">
+              <label for="admin-display-name">Display Name</label>
+              <input id="admin-display-name" type="text" autocomplete="off" />
+            </div>
+
+            <div class="controls">
+              <button id="admin-save-name-button" class="btn-secondary">
+                Save Display Name
+              </button>
+            </div>
+
+            <div class="form-group">
+              <label for="admin-cash-amount">Cash Amount</label>
+              <input id="admin-cash-amount" type="number" />
+            </div>
+
+            <div class="form-group">
+              <label for="admin-cash-reason">Reason</label>
+              <input id="admin-cash-reason" type="text" autocomplete="off" />
+            </div>
+
+            <div class="controls">
+              <button id="admin-add-cash-button" class="btn-primary">
+                Add Cash
+              </button>
+              <button id="admin-deduct-cash-button" class="btn-secondary">
+                Deduct Cash
+              </button>
+              <button id="admin-set-cash-button" class="btn-secondary">
+                Set Cash
+              </button>
+            </div>
+          </div>
+
+          <div class="admin-section">
+            <h3>Current Room Settings</h3>
+
+            <div class="form-group">
+              <label for="admin-room-min-bet">Minimum Bet</label>
+              <select id="admin-room-min-bet">
+                <option value="100">100</option>
+                <option value="1000">1K</option>
+                <option value="10000">10K</option>
+                <option value="50000">50K</option>
+                <option value="100000">100K</option>
+                <option value="500000">500K</option>
+                <option value="1000000">1M</option>
+                <option value="5000000">5M</option>
+                <option value="10000000">10M</option>
+                <option value="50000000">50M</option>
+                <option value="100000000">100M</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="admin-room-arrange-timer">Arrange Timer</label>
+              <select id="admin-room-arrange-timer">
+                <option value="30">30 Seconds</option>
+                <option value="60">60 Seconds</option>
+                <option value="90">90 Seconds</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Ready Timer</label>
+              <div class="fixed-setting">🔒 Fixed: 30 seconds</div>
+            </div>
+
+            <div class="form-group">
+              <label>Bot Difficulty</label>
+              <div class="fixed-setting">🔒 Fixed: Hard</div>
+            </div>
+
+            <label class="fp-check">
+              <input id="admin-room-auto-fill-bots" type="checkbox" checked />
+              Auto-fill bots
+            </label>
+
+            <label class="fp-check">
+              <input id="admin-room-scoop-bonus" type="checkbox" checked />
+              Scoop bonus +3
+            </label>
+
+            <div class="controls">
+              <button id="admin-save-room-button" class="btn-primary">
+                Save Room Settings
+              </button>
+              <button id="admin-fill-bots-button" class="btn-secondary">
+                Fill Bots
+              </button>
+              <button id="admin-force-start-button" class="btn-secondary">
+                Force Start / Next Round
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEND MONEY OVERLAY -->
+    <div id="send-money-form" class="hidden">
+      <div class="send-modal">
+        <h3>💸 Send Money</h3>
+
+        <div class="form-group">
+          <label for="send-username">Recipient Username</label>
+          <input id="send-username" type="text" autocomplete="off" />
+        </div>
+
+        <div class="form-group">
+          <label for="send-amount">Amount</label>
+          <input id="send-amount" type="number" min="1" />
+        </div>
+
+        <div class="form-group">
+          <label for="send-note">Note (optional)</label>
+          <input id="send-note" type="text" autocomplete="off" />
+        </div>
+
+        <div id="send-money-error" class="error"></div>
+        <div id="send-money-message" class="message"></div>
+
+        <div class="controls">
+          <button id="send-money-button" class="btn-primary">
+            Send
+          </button>
+          <button id="cancel-send-money-button" class="btn-secondary">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TRANSACTION HISTORY PANEL -->
+    <div id="transaction-history-panel" class="hidden">
+      <div class="tx-modal">
+        <button id="close-transaction-history-button" class="close-panel-btn">
+          ✕
+        </button>
+        <h3>Recent Transactions</h3>
+        <div id="transaction-history" class="tx-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- APP ENTRY POINT -->
+  <script type="module" src="./js/app.js"></script>
+  <!-- FEATURE 1: LEADERBOARDS -->
+  <script type="module" src="./js/leaderboard.js"></script>
+  <!-- FEATURE 2: EMOJI SPLASH -->
+  <script type="module" src="./js/emoji.js"></script>
 </body>
 </html>
