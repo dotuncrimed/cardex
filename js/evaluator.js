@@ -1,5 +1,11 @@
 import { rankValue, suitOf, rankOf } from "./cards.js";
 
+/* Rank string -> numeric value (2..14). Used by special-hand detection. */
+const RANK_NUM = {
+  "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,
+  "10": 10, "J": 11, "Q": 12, "K": 13, "A": 14
+};
+
 function getCounts(values) {
   const map = new Map();
   for (const value of values) map.set(value, (map.get(value) || 0) + 1);
@@ -69,24 +75,41 @@ export function arrangementScore(arrangement) {
   return strength5(evaluate5(arrangement.back)) * 1.15 + strength5(evaluate5(arrangement.middle)) * 1.0 + strength3(evaluate3(arrangement.front)) * 0.7;
 }
 
+/* ============================================================
+   FIXED: Middle-beats-Front legality.
+   Front uses the 3-card scale (1=high, 2=pair, 3=trips).
+   Middle uses the 5-card scale (1=high, 2=pair, 3=two-pair, 4=trips, ...).
+   We map the front category to the minimum 5-card category that beats it.
+   ============================================================ */
+function middleBeatsFront(frontEval, middleEval) {
+  let requiredCategory;
+  if (frontEval.category === 3) requiredCategory = 4;      // front trips  -> middle needs trips or better
+  else if (frontEval.category === 2) requiredCategory = 2; // front pair   -> middle needs pair or better
+  else requiredCategory = 1;                               // front high   -> anything
+
+  if (middleEval.category < requiredCategory) return false;
+
+  // Same-class tiebreaks (the trips case was previously missing).
+  if (frontEval.category === 1 && middleEval.category === 1 && middleEval.tiebreakers[0] < frontEval.tiebreakers[0]) return false; // high vs high
+  if (frontEval.category === 2 && middleEval.category === 2 && middleEval.tiebreakers[0] < frontEval.tiebreakers[0]) return false; // pair vs pair
+  if (frontEval.category === 3 && middleEval.category === 4 && middleEval.tiebreakers[0] < frontEval.tiebreakers[0]) return false; // trips vs trips
+  return true;
+}
+
 export function isLegalArrangement(arrangement) {
   const { front, middle, back } = arrangement;
   if (!front || front.length !== 3) return false;
   if (!middle || middle.length !== 5) return false;
   if (!back || back.length !== 5) return false;
-  
+
   const backEval = evaluate5(back);
   const middleEval = evaluate5(middle);
   const frontEval = evaluate3(front);
-  
+
+  // Back must beat Middle.
   if (compare5(backEval, middleEval) < 0) return false;
-  
-  const req = frontEval.category === 3 ? 3 : frontEval.category === 2 ? 2 : 1;
-  if (middleEval.category < req) return false;
-  
-  if (frontEval.category === 1 && middleEval.category === 1 && middleEval.tiebreakers[0] < frontEval.tiebreakers[0]) return false;
-  if (frontEval.category === 2 && middleEval.category === 2 && middleEval.tiebreakers[0] < frontEval.tiebreakers[0]) return false;
-  
+  // Middle must beat Front (fixed logic).
+  if (!middleBeatsFront(frontEval, middleEval)) return false;
   return true;
 }
 
@@ -104,14 +127,12 @@ export function getRoyalty(arrangement) {
   const m = evaluate5(arrangement.middle);
   const b = evaluate5(arrangement.back);
   let front = 0, middle = 0, back = 0;
-
   if (f.category === 3) front = 3;
   if (m.category === 7) middle = 2;
   if (m.category === 8) middle = 8;
   if (m.category === 9) middle = m.tiebreakers[0] === 14 ? 20 : 10;
   if (b.category === 8) back = 4;
   if (b.category === 9) back = b.tiebreakers[0] === 14 ? 10 : 5;
-
   return { front, middle, back, total: front + middle + back };
 }
 
@@ -129,7 +150,6 @@ export function detectSpecial(hand) {
 
   const counts = {};
   ranks.forEach((r) => { counts[r] = (counts[r] || 0) + 1; });
-
   if (hasThreeStraights(counts)) return { id: "threestraights", name: "Three Straights", tier: 3, points: 39 };
 
   const suitCounts = {};
@@ -155,30 +175,50 @@ function hasThreeFlushes(suitCountList) {
   return false;
 }
 
+/* ============================================================
+   FIXED: Three Straights detection.
+   counts keys are rank STRINGS ("2".."10","J","Q","K","A").
+   Aces live in a single stock at pool[14]; a straight that needs an
+   ace-low (position 1) draws from pool[14], so an Ace can play low or
+   high but can NEVER be double-spent across two straights.
+   ============================================================ */
 function hasThreeStraights(counts) {
   const pool = {};
-  for (let r = 1; r <= 14; r++) pool[r] = 0;
-  Object.entries(counts).forEach(([k, v]) => { pool[Number(k)] = v; });
+  for (let r = 2; r <= 14; r++) pool[r] = 0;
+
+  let total = 0;
+  Object.entries(counts).forEach(([rankStr, v]) => {
+    const n = RANK_NUM[rankStr] || 0;
+    if (n >= 2 && n <= 14) {
+      pool[n] += v;
+      total += v;
+    }
+  });
+  if (total !== 13) return false;
+
   return searchStraights(pool, [5, 5, 3], 0);
 }
 
 function searchStraights(pool, groups, idx) {
-  if (idx === groups.length) return Object.values(pool).every((v) => v === 0);
+  if (idx === groups.length) return true; // all three straights placed (5+5+3 = 13)
   const len = groups[idx];
-  const maxStart = len === 5 ? 10 : 12;
+  const maxStart = 14 - len + 1; // len=5 -> 10, len=3 -> 12
+
   for (let s = 1; s <= maxStart; s++) {
-    const used = [];
+    // Map each straight position to a pool rank. Position value 1 (ace-low) draws from pool[14].
+    const ranks = [];
     let ok = true;
     for (let i = 0; i < len; i++) {
-      let r = s + i;
-      if (r === 1 && pool[1] === 0 && pool[14] > 0) r = 14;
-      if ((pool[r] || 0) <= 0) { ok = false; break; }
-      used.push(r);
+      const val = s + i;
+      const poolRank = val === 1 ? 14 : val;
+      if ((pool[poolRank] || 0) <= 0) { ok = false; break; }
+      ranks.push(poolRank);
     }
     if (!ok) continue;
-    used.forEach((r) => { pool[r] -= 1; });
+
+    ranks.forEach((r) => { pool[r] -= 1; });
     const found = searchStraights(pool, groups, idx + 1);
-    used.forEach((r) => { pool[r] += 1; });
+    ranks.forEach((r) => { pool[r] += 1; });
     if (found) return true;
   }
   return false;
