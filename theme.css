@@ -1,0 +1,350 @@
+/* =====================================================================
+   CARDEX — theme.css  (FILE 1/7 : master paint spec / design tokens)
+   Scope: SKIN ONLY. No layout geometry is touched here, so enabling
+   this file cannot re-introduce the mobile overlap bugs.
+   Load order: place its <link> directly AFTER style.css in <head>.
+   Login screen is intentionally left alone (its #login-screen rules
+   are higher specificity and win over the plain-class rules below).
+   ===================================================================== */
+
+:root {
+  /* ---- palette (the single source of truth) ---- */
+  --felt-0:   #04140b;   /* deepest table shadow   */
+  --felt-1:   #072214;   /* table base             */
+  --felt-2:   #0c3320;   /* table highlight        */
+  --ink:      #0b1410;   /* text on light surfaces */
+  --paper:    #f6efdc;   /* card face              */
+  --paper-2:  #e9dec2;   /* card face shade        */
+  --line:     rgba(255,255,255,0.12);
+  --line-2:   rgba(255,255,255,0.20);
+  --txt:      #eaf3ee;   /* primary text           */
+  --txt-dim:  #9fb3a8;   /* secondary text         */
+  --gold:     #ffd54f;
+  --gold-2:   #ff9800;
+  --gold-deep:#b26a00;
+  --brass:    #c9a227;
+  --claret:   #8c2f39;
+  --claret-2: #d17b84;
+  --good:     #3ecf8e;
+  --good-2:   #1f8f5f;
+  --bad:      #ff5252;
+  --bad-2:    #c62828;
+  --info:     #4fc3f7;
+  --royal:    #b388ff;
+
+  /* ---- glass surfaces ---- */
+  --glass:        rgba(8, 24, 16, 0.62);
+  --glass-2:      rgba(8, 24, 16, 0.80);
+  --glass-line:   rgba(255,255,255,0.14);
+  --glass-inner:  inset 0 1px 0 rgba(255,255,255,0.06);
+
+  /* ---- radii ---- */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-pill: 999px;
+
+  /* ---- elevation ---- */
+  --sh-1: 0 2px 6px rgba(0,0,0,0.35);
+  --sh-2: 0 8px 22px rgba(0,0,0,0.45);
+  --sh-3: 0 18px 44px rgba(0,0,0,0.55);
+  --sh-gold: 0 8px 22px -8px rgba(255,193,7,0.55);
+  --ring: 0 0 0 3px rgba(255,213,79,0.35);
+
+  /* ---- motion ---- */
+  --t-fast: 120ms cubic-bezier(.2,.8,.2,1);
+  --t-med:  200ms cubic-bezier(.2,.8,.2,1);
+  --t-slow: 320ms cubic-bezier(.2,.8,.2,1);
+
+  /* ---- type ---- */
+  --font-ui: "Manrope", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+}
+
+/* ===================== GLOBAL BASE / TYPE / INPUT FEEL ===================== */
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body {
+  font-family: var(--font-ui);
+  color: var(--txt);
+  /* layered felt: vignette + soft top light, pure CSS, no image asset */
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(255,213,79,0.06), transparent 55%),
+    radial-gradient(140% 120% at 50% 120%, var(--felt-0), transparent 60%),
+    linear-gradient(180deg, var(--felt-2) 0%, var(--felt-1) 45%, var(--felt-0) 100%);
+  background-attachment: fixed;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* kill the mobile tap-flash + 300ms delay = crisper game feel */
+* { -webkit-tap-highlight-color: transparent; }
+button, .pg-btn, .btn-primary, .btn-secondary, .btn-ghost, .ready-btn,
+.hud-back, .pg-icon-btn, .close-panel-btn, .emoji-pick-btn, .spec-chip {
+  touch-action: manipulation;
+  font-family: inherit;
+}
+
+/* accessible focus ring everywhere (keyboard / switch users) */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--r-sm);
+}
+
+/* text selection in brand gold */
+::selection { background: rgba(255,213,79,0.30); color: #fff; }
+
+/* custom scrollbars (webkit + firefox) */
+* { scrollbar-width: thin; scrollbar-color: rgba(255,213,79,0.45) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(255,213,79,0.55), rgba(178,106,0,0.55));
+  border-radius: var(--r-pill);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-clip: padding-box; filter: brightness(1.15); }
+
+/* ===================== SURFACES / PANELS (glass) ===================== */
+.panel, .fp-panel, .wide-panel, .panel-sub,
+.tx-modal, .send-modal, .lb-modal, .pg-panel, .ready-area {
+  border-radius: var(--r-lg);
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--sh-3), var(--glass-inner);
+}
+.panel-sub, .tx-modal, .send-modal, .lb-modal { background: var(--glass-2); }
+.fp-panel, .panel, .wide-panel { background: var(--glass); backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%); }
+
+/* headings get the display serif for a "casino plaque" read */
+h1, h2, h3 { font-family: var(--font-display); letter-spacing: 0.01em; }
+h3 { color: var(--gold); }
+
+/* ===================== BUTTONS (depth + press feedback) ===================== */
+.btn-primary, .pg-btn.primary, #create-room-button, #join-room-button,
+#start-room-button, #submit-arrangement-button, #ready-button, .ready-btn {
+  position: relative;
+  border: none;
+  border-radius: var(--r-pill);
+  background: linear-gradient(180deg, #ffe27a 0%, var(--gold) 45%, var(--gold-2) 100%);
+  color: #2a1c00;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 0 var(--gold-deep), var(--sh-gold);
+  transition: transform var(--t-fast), box-shadow var(--t-fast), filter var(--t-fast);
+}
+.btn-primary:hover, .pg-btn.primary:hover, .ready-btn:hover { filter: brightness(1.05); transform: translateY(-1px); }
+.btn-primary:active, .pg-btn.primary:active, .ready-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--gold-deep); }
+
+.btn-secondary, .pg-btn, #fill-bots-button, #take-seat-button, #leave-room-button,
+#cancel-create-room-button, #cancel-join-room-button, #admin-back-button,
+#close-results-button, #reveal-skip, #clear-arrangement-button, #auto-arrange-button,
+#open-zoom-button, #view-results-button, #force-start-button {
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03));
+  color: var(--txt);
+  font-weight: 700;
+  box-shadow: var(--sh-1);
+  transition: transform var(--t-fast), background var(--t-fast), border-color var(--t-fast);
+}
+.btn-secondary:hover, .pg-btn:hover { background: rgba(255,255,255,0.16); border-color: var(--gold); transform: translateY(-1px); }
+.btn-secondary:active, .pg-btn:active { transform: translateY(1px); }
+
+.btn-ghost {
+  border: 1px dashed var(--line-2);
+  background: transparent;
+  color: var(--txt-dim);
+  border-radius: var(--r-pill);
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+.btn-ghost:hover { color: var(--gold); border-color: var(--gold); }
+
+/* disabled = clearly dead, not "maybe broken" */
+button:disabled, .btn-primary:disabled, .pg-btn:disabled, .daily-claim-btn:disabled {
+  opacity: 0.45;
+  filter: grayscale(0.6);
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* icon buttons (exit / gear) */
+.hud-back, .pg-icon-btn, .close-panel-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line-2);
+  background: rgba(0,0,0,0.35);
+  color: var(--txt);
+  transition: background var(--t-fast), transform var(--t-fast), color var(--t-fast);
+}
+.hud-back:hover, .pg-icon-btn:hover, .close-panel-btn:hover { background: rgba(0,0,0,0.6); color: var(--gold); transform: translateY(-1px); }
+
+/* ===================== CARDS (paper realism) ===================== */
+.card {
+  background: linear-gradient(160deg, var(--paper) 0%, var(--paper-2) 100%);
+  border: 1px solid rgba(20,16,9,0.45);
+  border-radius: var(--r-sm);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.7);
+  color: var(--ink);
+  transition: transform var(--t-fast), box-shadow var(--t-fast);
+}
+.card.red { color: var(--claret); }
+.card.selected {
+  box-shadow: 0 0 0 3px var(--gold), 0 12px 24px rgba(0,0,0,0.5);
+}
+/* only lift on hover for pointer devices (don't fight touch drag) */
+@media (hover: hover) {
+  .row-cards .card:hover, .zoom-rows .card:hover { transform: translateY(-6px) rotate(var(--rot,0deg)); }
+}
+
+/* card backs: crisp CSS pattern, no external image */
+.card-back {
+  border-radius: var(--r-sm);
+  border: 2px solid rgba(255,255,255,0.85);
+  background:
+    repeating-linear-gradient(45deg, rgba(255,255,255,0.10) 0 4px, transparent 4px 8px),
+    repeating-linear-gradient(-45deg, rgba(0,0,0,0.12) 0 4px, transparent 4px 8px),
+    linear-gradient(160deg, #d4574f, #8c2f39);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+}
+
+/* ===================== AVATARS / COIN CHIPS / BADGES ===================== */
+.avatar, .fp-avatar, .admin-user-avatar, .spec-avatar {
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(255,213,79,0.55), var(--sh-1);
+}
+.coin-pill, .fp-cash-chip {
+  background: linear-gradient(180deg, rgba(255,213,79,0.18), rgba(255,152,0,0.12));
+  border: 1px solid rgba(255,213,79,0.45);
+  color: #ffe082;
+  border-radius: var(--r-pill);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.winner-badge { background: linear-gradient(145deg, #ffe27a, var(--gold-2)); color: #2a1c00; box-shadow: 0 2px 0 var(--gold-deep); }
+.foul-badge   { background: linear-gradient(145deg, #ff6b6b, var(--bad-2)); color: #fff; }
+.rank-badge   { background: rgba(255,255,255,0.14); color: var(--txt); border: 1px solid var(--line-2); }
+.net-badge    { background: rgba(62,207,142,0.18); color: #9ff0c8; border: 1px solid rgba(62,207,142,0.4); }
+.scoop-badge  { background: rgba(79,195,247,0.16); color: #bfe9ff; border: 1px solid rgba(79,195,247,0.4); }
+.royalty-badge{ background: rgba(179,136,255,0.16); color: #e2d4ff; border: 1px solid rgba(179,136,255,0.45); }
+.winner-badge, .foul-badge, .rank-badge, .net-badge, .scoop-badge, .royalty-badge {
+  border-radius: var(--r-pill); font-weight: 800; font-size: 11px; padding: 2px 10px;
+}
+
+/* ===================== TABLE MAT / SEATS ===================== */
+#room-screen .mat {
+  border-radius: 50% / 42%;
+  background:
+    radial-gradient(60% 50% at 50% 38%, rgba(255,213,79,0.10), transparent 70%),
+    radial-gradient(120% 120% at 50% 50%, var(--felt-2), var(--felt-1) 55%, var(--felt-0));
+  box-shadow: inset 0 0 60px rgba(0,0,0,0.6), 0 10px 40px rgba(0,0,0,0.5);
+  border: 2px solid rgba(255,213,79,0.18);
+}
+#room-screen .seat .avatar { transition: transform var(--t-fast), box-shadow var(--t-fast); }
+#room-screen .seat-status { font-weight: 800; }
+
+/* swap FAB reskinned via #room-screen so it beats the runtime-injected rule in app.js */
+#room-screen .swap-fab {
+  background: linear-gradient(145deg, #ff7ab0, var(--claret));
+  border-color: rgba(255,255,255,0.85);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.55);
+}
+
+/* ===================== LOBBY / ROOM CARDS ===================== */
+.lobby-room-card {
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
+  box-shadow: var(--sh-1);
+  transition: transform var(--t-fast), box-shadow var(--t-fast), border-color var(--t-fast);
+}
+@media (hover: hover) {
+  .lobby-room-card:hover { transform: translateY(-2px); border-color: var(--gold); box-shadow: var(--sh-2); }
+}
+.lobby-seat { border-radius: var(--r-sm); }
+.lobby-seat.bot { opacity: 0.7; }
+
+/* ===================== FORM CONTROLS ===================== */
+.form-group input, .form-group select, #join-room-code, #admin-player-username,
+#admin-display-name, #admin-cash-amount, #admin-cash-reason, #send-username,
+#send-amount, #send-note, #admin-user-search {
+  width: 100%;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-2);
+  background: rgba(0,0,0,0.35);
+  color: var(--txt);
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast), background var(--t-fast);
+}
+.form-group input:focus, .form-group select:focus, #join-room-code:focus,
+#admin-user-search:focus, #send-amount:focus, #send-username:focus {
+  outline: none;
+  border-color: var(--gold);
+  background: rgba(0,0,0,0.5);
+  box-shadow: var(--ring);
+}
+.form-group select { appearance: none; -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--gold) 50%), linear-gradient(135deg, var(--gold) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 55%, calc(100% - 12px) 55%;
+  background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; padding-right: 34px; }
+.form-group label { color: var(--txt-dim); font-weight: 600; font-size: 12px; letter-spacing: 0.03em; text-transform: uppercase; }
+.fp-check { color: var(--txt-dim); font-size: 13px; }
+.fp-check input { accent-color: var(--gold); }
+
+/* ===================== MESSAGES / FEEDBACK ===================== */
+.message, #menu-message, #room-message, #admin-message, #send-money-message { color: var(--good); }
+.error, #login-error, #create-room-error, #join-room-error, #send-money-error { color: var(--claret-2); }
+.pg-message { color: var(--gold); font-weight: 700; }
+
+/* banner sheen */
+.banner {
+  background: linear-gradient(90deg, var(--gold), var(--gold-2));
+  color: #2a1c00; font-weight: 900;
+  border-radius: var(--r-pill);
+  box-shadow: var(--sh-gold);
+}
+
+/* reveal chips */
+.reveal-banner { background: rgba(4,20,12,0.78); border: 1px solid var(--line); border-radius: var(--r-pill); }
+.rb-pts.pos { color: #b6f5cf; } .rb-pts.neg { color: #ffc2c8; }
+.reveal-total { background: rgba(12,51,32,0.92); border-radius: var(--r-sm); color: var(--txt); }
+
+/* score panel glass */
+#room-screen .score-panel {
+  background: var(--glass-2);
+  border: 1px solid var(--glass-line);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+
+/* player rows */
+.player-row { border-radius: var(--r-sm); }
+.player-row.ready { background: rgba(62,207,142,0.10); }
+.player-row.not-ready { background: rgba(255,82,82,0.08); }
+
+/* transaction rows */
+.tx-row { border-radius: var(--r-sm); transition: background var(--t-fast); }
+@media (hover: hover){ .tx-row:hover { background: rgba(255,255,255,0.04); } }
+.tx-pos { color: var(--good); } .tx-neg { color: var(--claret-2); }
+
+/* admin rows */
+.admin-user-row { border-radius: var(--r-sm); transition: background var(--t-fast); }
+.admin-user-row.selected { background: rgba(255,213,79,0.10); outline: 1px solid var(--gold); }
+@media (hover: hover){ .admin-user-row:hover { background: rgba(255,255,255,0.04); } }
+
+/* ===================== MOTION PREFERENCES (accessibility + perf) ============ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
