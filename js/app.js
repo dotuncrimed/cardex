@@ -440,6 +440,10 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+function safeDomId(prefix, raw) {
+  return prefix + String(raw == null ? "" : raw).replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
 function renderSpectatorBar() {
   const bar = document.getElementById("spectator-bar");
   if (!bar) return;
@@ -456,8 +460,14 @@ function renderSpectatorBar() {
     const cls = "spec-avatar" + (s.kickedForNotReady ? " kicked" : "") + (isMe ? " me" : "");
     const label = (s.displayName || s.username || "?").charAt(0).toUpperCase();
     const title = (s.displayName || s.username || "?") + (isMe ? " (You)" : "") + (s.kickedForNotReady ? " — kicked: not ready" : "");
-    return `<div class="${cls}" title="${escapeHtml(title)}">${escapeHtml(label)}</div>`;
+    return `<div class="${cls}" id="${safeDomId("spec-av-", s.uid)}" title="${escapeHtml(title)}">${escapeHtml(label)}</div>`;
   }).join("");
+
+  // Hidden anchors: give overflow spectators a real on-screen box so emoji
+  // flights still originate from the gallery instead of the table center.
+  const hiddenAnchors = specs.slice(MAX).map((s) =>
+    `<span class="spec-anchor" id="${safeDomId("spec-av-", s.uid)}" aria-hidden="true"></span>`
+  ).join("");
 
   const more = extra > 0
     ? `<div class="spec-avatar more" title="${escapeHtml(specs.slice(MAX).map((s) => s.displayName || s.username).join(", "))}">+${extra}</div>`
@@ -473,7 +483,7 @@ function renderSpectatorBar() {
       `<span class="spec-eye">👁</span>` +
       `<span class="spec-count">${specs.length} watching</span>` +
     `</button>` +
-    `<div class="spec-avatars">${avatars}${more}</div>` +
+    `<div class="spec-avatars">${avatars}${hiddenAnchors}${more}</div>` +
     `<div id="spectator-names" class="spec-list hidden">${names}</div>`;
 }
 
@@ -1842,6 +1852,11 @@ function injectExtraStyles() {
     @media (max-width: 560px) {
       .spectator-bar { top: 58px; left: 8px; max-width: 52%; }
       .spec-avatar { width: 22px; height: 22px; font-size: 10px; }
+    }
+    .spec-anchor {
+      position: absolute; left: 0; top: 0;
+      width: 26px; height: 26px;
+      visibility: hidden; pointer-events: none;
     }
   `;
   document.head.appendChild(style);
