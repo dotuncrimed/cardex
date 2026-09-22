@@ -3,7 +3,8 @@
 // - Click a player seat/avatar ANY time, even through overlays (lobby/results/reveal/zoom)
 // - Picker modal lists emojis; clicking one sends it to that player
 // - Flight path is ALWAYS sender -> receiver for every viewer
-//   (seated player = their seat dock; spectator = their avatar in the gallery strip)
+//   (seated player = their seat dock, even when hidden during arranging;
+//    spectator = their avatar in the gallery strip, never table center)
 // - No sender name shown on the splash
 import { db } from "./firebase.js";
 import {
@@ -46,6 +47,16 @@ function seatOffset(playerSeat, mySeat) {
 function safeDomId(prefix, raw) {
   return prefix + String(raw == null ? "" : raw).replace(/[^a-zA-Z0-9_-]/g, "");
 }
+
+/* Geometric dock anchors — mirror the CSS seat positions so a HIDDEN dock
+   (e.g. #seat-bottom during arranging) still resolves to its real edge,
+   never the table center. */
+const SEAT_ANCHOR = {
+  bottom: (w, h) => ({ x: w * 0.50, y: h * 0.90 }),
+  top:    (w, h) => ({ x: w * 0.50, y: h * 0.10 }),
+  left:   (w, h) => ({ x: w * 0.12, y: h * 0.48 }),
+  right:  (w, h) => ({ x: w * 0.88, y: h * 0.48 })
+};
 
 function injectEmojiStyles() {
   if (document.getElementById("emoji-styles-v3")) return;
@@ -125,24 +136,29 @@ function myPlayerSeat() {
   return me ? me.seat : null;
 }
 
-/* Exact center of a logical seat in table coordinates (with hidden-seat fallbacks) */
-function getSeatCenter(seat) {
+/* Resolve a logical seat (0-3) to table coordinates.
+   Primary = geometry anchor (works even when the dock is display:none);
+   refined by the live element rect when visible. NEVER returns center. */
+function getSeatCenter(seatIndex) {
   const table = document.querySelector(".pg-table");
   if (!table) return null;
   const lR = table.getBoundingClientRect();
-  const mySeat = myPlayerSeat() ?? 0;
-  const pos = SEAT_POS[seatOffset(seat, mySeat)];
+  if (lR.width === 0 || lR.height === 0) return null;
+  if (seatIndex === null || seatIndex === undefined || seatIndex < 0 || seatIndex > 3) return null;
+
+  const mySeat = myPlayerSeat();
+  const base = (mySeat === null ? 0 : mySeat);
+  const pos = SEAT_POS[seatOffset(seatIndex, base)];
+  const anchor = SEAT_ANCHOR[pos](lR.width, lR.height);
+
   const el = document.getElementById("seat-" + pos);
-  if (el && el.offsetParent !== null) {
+  if (el) {
     const r = el.getBoundingClientRect();
     if (r.width > 0 && r.height > 0) {
       return { x: r.left - lR.left + r.width / 2, y: r.top - lR.top + r.height / 2 };
     }
   }
-  if (pos === "top") return { x: lR.width / 2, y: lR.height * 0.08 };
-  if (pos === "left") return { x: lR.width * 0.12, y: lR.height * 0.46 };
-  if (pos === "right") return { x: lR.width * 0.88, y: lR.height * 0.46 };
-  return { x: lR.width / 2, y: lR.height / 2 };
+  return anchor;
 }
 
 /* Center of an arbitrary element (spectator avatar / hidden anchor) in table coords */
@@ -154,17 +170,23 @@ function elementCenterInTable(table, el) {
   return { x: r.left - lR.left + r.width / 2, y: r.top - lR.top + r.height / 2 };
 }
 
-/* Resolve where an emoji came from: gallery station (spectator) or seat dock (player) */
+/* Single source of truth for the launch point:
+   spectator -> gallery avatar, else gallery corner (NOT center);
+   seated    -> their dock, else bottom dock (NOT center). */
 function getOriginCenter(table, ev) {
+  const lR = table.getBoundingClientRect();
   if (ev.fromSpectatorUid) {
-    const el = document.getElementById(safeDomId("spec-av-", ev.fromSpectatorUid));
-    const c = elementCenterInTable(table, el);
+    const av = document.getElementById(safeDomId("spec-av-", ev.fromSpectatorUid));
+    const c = elementCenterInTable(table, av);
     if (c) return c;
-    // Spectator bar not rendered yet on this screen -> launch from table center
-    const lR = table.getBoundingClientRect();
-    return { x: lR.width / 2, y: lR.height / 2 };
+    const bar = document.getElementById("spectator-bar");
+    const bc = elementCenterInTable(table, bar);
+    if (bc) return bc;
+    return { x: lR.width * 0.10, y: lR.height * 0.12 }; // gallery corner
   }
-  return getSeatCenter(ev.fromSeat);
+  const s = getSeatCenter(ev.fromSeat);
+  if (s) return s;
+  return { x: lR.width * 0.50, y: lR.height * 0.90 }; // seated fallback = bottom
 }
 
 function spawnBurst(table, x, y, ev) {
