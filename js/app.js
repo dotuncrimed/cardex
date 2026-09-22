@@ -572,19 +572,64 @@ function renderLobbySection() {
   renderPlayerList();
 }
 
+function middleBeatsFront(arr) {
+  if (arr.front.length !== 3 || arr.middle.length !== 5) return null;
+  const f = evaluate3(arr.front);
+  const m = evaluate5(arr.middle);
+  const req = f.category === 3 ? 3 : f.category === 2 ? 2 : 1;
+  if (m.category < req) return false;
+  // Same category: the pair / high-card rank must also match up
+  if (m.category === req && f.category === 1 && m.tiebreakers[0] < f.tiebreakers[0]) return false;
+  if (m.category === req && f.category === 2 && m.tiebreakers[0] < f.tiebreakers[0]) return false;
+  return true;
+}
+
+function backBeatsMiddle(arr) {
+  if (arr.middle.length !== 5 || arr.back.length !== 5) return null;
+  return compare5(evaluate5(arr.back), evaluate5(arr.middle)) >= 0;
+}
+
 function rowLabelInfo(row) {
   const arr = state.arrangement;
-  if (row === "front") { const ev = evaluate3(arr.front); return { name: ev.name, ok: arr.front.length === 3 }; }
-  if (row === "middle") {
-    const ev = evaluate5(arr.middle);
-    let ok = arr.middle.length === 5;
-    if (ok) { const f = evaluate3(arr.front); const req = f.category === 3 ? 3 : f.category === 2 ? 2 : 1; ok = ev.category >= req; }
-    return { name: ev.name, ok };
+
+  if (row === "front") {
+    const complete = arr.front.length === 3;
+    const ev = complete ? evaluate3(arr.front) : null;
+    const mvf = middleBeatsFront(arr);
+    const foul = complete && mvf === false;
+    return {
+      name: ev ? ev.name : "—",
+      ok: complete && !foul,
+      note: foul ? "Too strong for Middle" : ""
+    };
   }
-  const ev = evaluate5(arr.back);
-  let ok = arr.back.length === 5;
-  if (ok && arr.middle.length === 5) ok = compare5(ev, evaluate5(arr.middle)) >= 0;
-  return { name: ev.name, ok };
+
+  if (row === "middle") {
+    const complete = arr.middle.length === 5;
+    const ev = complete ? evaluate5(arr.middle) : null;
+    const mvf = middleBeatsFront(arr);
+    const bvm = backBeatsMiddle(arr);
+    const foulFront = complete && mvf === false;
+    const foulBack = complete && bvm === false;
+    let note = "";
+    if (foulFront) note = "Must beat Front";
+    else if (foulBack) note = "Too strong for Back";
+    return {
+      name: ev ? ev.name : "—",
+      ok: complete && !foulFront && !foulBack,
+      note
+    };
+  }
+
+  const complete = arr.back.length === 5;
+  const ev = complete ? evaluate5(arr.back) : null;
+  const bvm = backBeatsMiddle(arr);
+  const foul = complete && bvm === false;
+  return {
+    name: ev ? ev.name : "—",
+    ok: complete && !foul,
+    note: foul ? "Must beat Middle" : ""
+  };
 }
 
 function onMyCardTap(row, index) {
@@ -632,7 +677,12 @@ function renderMyRows() {
       const info = rowLabelInfo(row);
       label.classList.toggle("ok", info.ok);
       label.classList.toggle("bad", !info.ok);
-      label.innerHTML = `<span class="check">${info.ok ? "✓" : "✗"}</span><span class="hand-name">${info.name}</span>`;
+      label.innerHTML =
+        `<span class="check">${info.ok ? "✓" : "✗"}</span>` +
+        `<span class="hand-name">${info.name}</span>` +
+        (info.note
+          ? `<span class="foul-note" style="display:block;font-size:10px;font-weight:800;color:#ff8a80;">${info.note}</span>`
+          : "");
     }
   });
   if (state.room) state.dealAnimPlayedFor = state.room.roundNumber;
