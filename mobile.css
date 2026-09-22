@@ -1,0 +1,149 @@
+/* =====================================================================
+   CARDEX — MOBILE FELT LAYOUT PATCH
+   Scoped to #room-screen so it outranks the runtime-injected styles in
+   app.js / emoji.js (plain-class rules) WITHOUT !important, and is
+   linked LAST in <head> so it also outranks style.css + inline styles.
+   Strategy: replace "%-from-wall" placement with reserved vertical BANDS
+   measured in px+vh, clamp every horizontal extent to the viewport, and
+   collapse the 4-corner reveal into a single scrollable column.
+   ===================================================================== */
+
+/* ---- design tokens: the only numbers you should ever need to tweak ---- */
+#room-screen {
+  --hud-h: 56px;     /* reserved top bar height            */
+  --seat-h: 104px;   /* avatar + name + coin + status block */
+  --ctl-h: 52px;     /* bottom button row height           */
+  --gap: 8px;
+}
+
+/* ================= D1 — HUD never overflows the right edge ============ */
+#room-screen .hud {
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px;
+  align-items: center;
+}
+#room-screen .hud-back,
+#room-screen .pg-icon-btn { flex: 0 0 auto; }          /* exit + gear never shrink */
+#room-screen .hud-badges {
+  flex: 1 1 auto;
+  min-width: 0;            /* allows children to truncate instead of overflow */
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+#room-screen .hud-badge {
+  max-width: 30vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ================= D2/D3 — top opponent sits BELOW the HUD ============ */
+#room-screen .seat-top {
+  top: calc(var(--hud-h) + var(--gap));
+  bottom: auto;
+}
+/* card-backs become ONE short horizontal strip directly under the avatar */
+#room-screen .cluster {
+  flex-direction: row;     /* was a 3-high column -> now a single low row */
+  flex-wrap: nowrap;
+  gap: 2px;
+  align-items: flex-start;
+  max-width: 92vw;
+  overflow: hidden;        /* D9 safety: a strip can never leave the screen */
+}
+#room-screen .cluster-top {
+  top: calc(var(--hud-h) + var(--gap) + var(--seat-h) + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+#room-screen .card-back { width: 18px; height: 26px; margin-left: -8px; }
+#room-screen .card-back:first-child { margin-left: 0; }
+
+/* ================= D6 — side opponents' backs track THEIR seat ======== */
+#room-screen .seat-left,
+#room-screen .seat-right { top: 40vh; }
+#room-screen .cluster-left {
+  left: 2%;
+  top: calc(40vh + var(--seat-h) + 6px);
+}
+#room-screen .cluster-right {
+  right: 2%;
+  left: auto;
+  top: calc(40vh + var(--seat-h) + 6px);
+}
+
+/* ================= D7/D8 — declutter the center & message bands ======= */
+#room-screen .table-center { display: none; }   /* timer lives in zoom + status text */
+#room-screen #room-message {
+  top: auto;
+  bottom: calc(var(--ctl-h) + var(--gap) + 4px);  /* rides above the button row */
+  width: 92%;
+}
+
+/* ================= D4/D5 — reveal becomes a vertical scroll column ==== */
+#room-screen #reveal-layer {
+  display: flex;
+  flex-direction: column;     /* natural top -> left -> right -> bottom order */
+  align-items: stretch;
+  gap: 10px;
+  padding: calc(var(--hud-h) + var(--gap)) 10px 16px;  /* clear the HUD */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+#room-screen .reveal-slot {
+  position: static;           /* kill the 4-corner absolutes entirely */
+  transform: none;
+  left: auto; right: auto; top: auto; bottom: auto;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+}
+#room-screen .reveal-cards { flex-wrap: wrap; justify-content: center; }
+#room-screen .reveal-card { width: 40px; height: 58px; margin-left: -6px; }
+#room-screen .reveal-card:first-child { margin-left: 0; }
+#room-screen #reveal-skip { position: sticky; top: 4px; align-self: flex-end; z-index: 5; }
+
+/* ================= D9 — card rows clamp to the viewport =============== */
+#room-screen .row-cards,
+#room-screen .tmr-cards,
+#room-screen .zoom-rows .row-cards {
+  max-width: 100%;
+  flex-wrap: nowrap;
+  overflow: visible;
+}
+#room-screen .row-cards .card { flex: 0 0 auto; }
+#room-screen .my-rows { width: 96%; }
+#room-screen .table-my-rows { width: 96%; left: 50%; transform: translateX(-50%); }
+
+/* bottom button row wraps instead of overflowing (D1 cousin) */
+#room-screen .arrange-controls { flex-wrap: wrap; gap: 6px; }
+
+/* ================= D10 — swap FAB gets a gutter, not an overlay ======= */
+#room-screen .zoom-rows { padding-right: 52px; }
+#room-screen .swap-fab { top: 50%; right: 4px; width: 42px; height: 42px; font-size: 19px; }
+
+/* ================= ready / results / lobby panels stay on-screen ====== */
+#room-screen .ready-area,
+#room-screen .pg-panel {
+  width: min(96vw, 560px);
+  max-width: 96vw;
+  box-sizing: border-box;
+}
+
+/* ============ smallest phones (<=430px): drop the back-strips ========= */
+/* Opponent progress is still legible via the seat ✓ / … status, so the
+   card-back strips are pure clutter here — removing them kills D3/D6 for good. */
+@media (max-width: 430px) {
+  #room-screen { --seat-h: 84px; --hud-h: 52px; }
+  #room-screen .cluster { display: none; }
+  #room-screen .avatar { width: 42px; height: 42px; font-size: 17px; }
+  #room-screen .seat-name { font-size: 10px; max-width: 78px; }
+  #room-screen .coin-pill { font-size: 10px; padding: 2px 7px; max-width: 92px; }
+  #room-screen .row-cards .card { width: 40px; height: 58px; margin-left: -14px; }
+  #room-screen .row-cards .card:first-child { margin-left: 0; }
+  #room-screen .tmr-card { width: 34px; height: 50px; margin-left: -12px; }
+  #room-screen .reveal-card { width: 34px; height: 50px; margin-left: -5px; }
+  #room-screen .hud-badge { max-width: 26vw; font-size: 11px; }
+}
