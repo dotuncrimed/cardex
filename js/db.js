@@ -11,8 +11,8 @@ import { detectSpecial } from "./evaluator.js";
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 /* ============ LIFECYCLE & ECONOMY CONSTANTS ============ */
-const STALE_MS = 3 * 60 * 1000;          
-export const READY_FALLBACK_MS = 120000; 
+const STALE_MS = 3 * 60 * 1000;
+export const READY_FALLBACK_MS = 120000;
 export const DAILY_BOT_LIMIT = 10000000; // 10M per day minted "from the air" per player
 const sweptRoomIds = new Set();
 
@@ -94,7 +94,6 @@ export async function createRoom(user, settings) {
     const ref = roomRef(code);
     const snap = await getDoc(ref);
     if (snap.exists()) continue;
-
     const room = {
       roomCode: code, hostId: user.uid, status: "lobby", roundNumber: 0, pot: 0,
       createdAt: Date.now(), updatedAt: Date.now(), lastHeartbeat: Date.now(),
@@ -145,7 +144,6 @@ export async function joinRoomByCode(user, code, displayName) {
   const minBet = Number(room.settings.minBet) || 0;
   const joiner = await getUserData(user.username);
   const hasMoney = Boolean(joiner) && Number(joiner.cash) >= minBet;
-
   let players = [...room.players];
   let spectators = [...room.spectators];
   const emptySeat = firstEmptySeat(players);
@@ -172,7 +170,6 @@ export async function takeSeat(user, roomId, displayName) {
   if (!room) return;
   if (room.players.some((p) => p.uid === user.uid)) return;
   if (!["lobby", "round_end"].includes(room.status)) throw new Error("You can only take a seat between rounds.");
-  
   const minBet = Number(room.settings.minBet) || 0;
   const me = await getUserData(user.username);
   if (!me || Number(me.cash) < minBet) throw new Error("Not enough cash to take a seat.");
@@ -194,14 +191,32 @@ export async function takeSeat(user, roomId, displayName) {
   await claimHostIfOrphan(roomId);
 }
 
+/* ============================================================
+   FIXED: LEAVE-ROOM INTERLOCK.
+   A seated human can NOT leave during an active round
+   (arranging / scoring). This closes the exploit where a
+   losing player exited mid-round, got swapped for a fresh-uid
+   bot, and skipped settlement entirely.
+   - If they close the tab instead, they stay in room.players;
+     finishRound will auto-arrange their hand and settle them.
+   - Leaving is still allowed during lobby / round_end.
+   - Spectators may always leave.
+   ============================================================ */
 export async function leaveRoom(user, roomId) {
   const room = await getRoom(roomId);
   if (!room) return;
+
   const leavingPlayer = room.players.find((p) => p.uid === user.uid);
+  const activeRound = ["arranging", "scoring"].includes(room.status);
+
+  // INTERLOCK: seated humans must finish the round before leaving.
+  if (activeRound && leavingPlayer && !leavingPlayer.isBot) {
+    throw new Error("Round in progress. You must finish this round before leaving.");
+  }
+
   let players = room.players.filter((p) => p.uid !== user.uid);
   let spectators = room.spectators.filter((s) => s.uid !== user.uid);
   let hostId = room.hostId;
-  const activeRound = ["arranging", "scoring"].includes(room.status);
 
   if (hostId === user.uid) {
     const nextHost = players.find((p) => !p.isBot);
@@ -209,13 +224,8 @@ export async function leaveRoom(user, roomId) {
     hostId = nextHost.uid;
   }
 
-  if (activeRound && leavingPlayer && players.some((p) => !p.isBot)) {
-    players.push(makeBot(leavingPlayer.seat, room.settings.botLevel));
-  }
-
   players.sort((a, b) => a.seat - b.seat);
   if (players.length === 0 && spectators.length === 0) { await deleteRoomFully(roomId, room.players); return; }
-
   await updateDoc(roomRef(roomId), { players, spectators, hostId, updatedAt: Date.now() });
 }
 
@@ -345,7 +355,6 @@ export async function startRound(roomId, user) {
 
   let players = room.players.map((player) => ({ ...player, submitted: false, ready: Boolean(player.isBot) }));
   if (room.settings.autoFillBots !== false) players = ensureBots(players, room.settings.botLevel);
-
   const humans = players.filter((player) => !player.isBot);
   if (humans.length === 0) throw new Error("At least one human player is required.");
 
@@ -374,7 +383,6 @@ export async function startRound(roomId, user) {
       isBot: Boolean(player.isBot), hand, arrangement: null, fouled: false,
       submitted: false, roundNumber, updatedAt: Date.now()
     });
-
     if (player.isBot) {
       const spec = detectSpecial(hand);
       if (spec) {
@@ -397,11 +405,13 @@ export async function replaceUnreadyWithBots(roomId) {
   if (!room) return;
   let players = [...room.players];
   let hostId = room.hostId;
+
   const hostPlayer = players.find((p) => p.uid === hostId);
   if (hostPlayer && !hostPlayer.isBot && !hostPlayer.ready) {
     const successor = players.find((p) => !p.isBot && p.ready && p.uid !== hostId);
     if (successor) hostId = successor.uid; else return;
   }
+
   players = players.filter((p) => p.isBot || p.ready);
   if (!players.some((p) => !p.isBot)) return;
   players = ensureBots(players, room.settings.botLevel);
@@ -423,15 +433,32 @@ async function updateUserStats(username, points, isWinner) {
   });
 }
 
-/* ============ HOUSE BANK SETTLEMENT LOGIC ============ */
+/* ============================================================
+   HOUSE BANK SETTLEMENT LOGIC
+   FIXED: DEADLOCK BREAKER.
+   - The host OR any seated human may drive settlement, so a
+     round can never stall forever if the host's tab dies.
+   - Hard guards prevent premature or double settlement:
+     (a) arranging phase requires all-submitted OR timer+8s grace
+     (b) settledRound idempotency check (existing)
+   ============================================================ */
 export async function finishRound(roomId, user) {
   const room = await getRoom(roomId);
   if (!room) return;
-  if (room.hostId !== user.uid) return;
+
+  const isHost = room.hostId === user.uid;
+  const isSeatedHuman = room.players.some((p) => p.uid === user.uid && !p.isBot);
+  if (!isHost && !isSeatedHuman) return;
+
   if (room.status !== "arranging" && room.status !== "scoring") return;
   if ((room.roundNumber || 0) > 0 && room.settledRound === room.roundNumber) return;
 
+  // Guard: never settle mid-arrange unless everyone submitted or timer expired + grace.
   if (room.status === "arranging") {
+    const allSubmitted = room.players.every((p) => p.submitted);
+    const timerExpired = room.phaseEndsAt && Date.now() > room.phaseEndsAt;
+    const graceOk = timerExpired && (Date.now() - room.phaseEndsAt > 8000);
+    if (!allSubmitted && !graceOk) return;
     await updateDoc(roomRef(roomId), { status: "scoring", updatedAt: Date.now() });
   }
 
@@ -441,10 +468,12 @@ export async function finishRound(roomId, user) {
       try {
         const snap = await getDoc(handRef(roomId, player.uid));
         let data = snap.exists() ? snap.data() : null;
+
         if (!data) {
           data = { uid: player.uid, username: player.username, hand: [], arrangement: { front: [], middle: [], back: [] }, fouled: true, submitted: true, roundNumber: room.roundNumber, updatedAt: Date.now() };
           await setDoc(handRef(roomId, player.uid), data, { merge: true });
         }
+
         if (!data.special && data.hand && data.hand.length === 13) {
           const spec = detectSpecial(data.hand);
           if (spec) {
@@ -455,12 +484,14 @@ export async function finishRound(roomId, user) {
             await setDoc(handRef(roomId, player.uid), { arrangement: data.arrangement, special: spec, submitted: true, updatedAt: Date.now() }, { merge: true });
           }
         }
+
         if (!data.arrangement && data.hand && data.hand.length === 13) {
           const arrangement = botArrangeHand(data.hand, player.botLevel || room.settings.botLevel || "normal");
           await submitArrangement(roomId, player.uid, arrangement, false);
           data.arrangement = arrangement;
           data.submitted = true;
         }
+
         handsMap[player.uid] = data;
       } catch (error) {
         handsMap[player.uid] = { uid: player.uid, username: player.username, hand: [], arrangement: { front: [], middle: [], back: [] }, fouled: true, submitted: true };
@@ -468,6 +499,7 @@ export async function finishRound(roomId, user) {
     }
 
     const results = calculateResults(room, handsMap);
+
     const fresh = await getRoom(roomId);
     const alreadySettled = fresh && fresh.settledRound === results.roundNumber;
 
@@ -477,8 +509,8 @@ export async function finishRound(roomId, user) {
       const playerMap = {};
       room.players.forEach((p) => { playerMap[p.uid] = p; });
 
-      let currentPot = await getHousePot(); 
-      let housePotDelta = 0; 
+      let currentPot = await getHousePot();
+      let housePotDelta = 0;
 
       for (const ranking of results.rankings) {
         if (ranking.isBot) continue;
@@ -511,10 +543,8 @@ export async function finishRound(roomId, user) {
           const airPortion = Math.min(botDelta, remainingCap);
           const potPortion = botDelta - airPortion;
           const potPayout = Math.min(potPortion, Math.max(0, currentPot));
-
           botWinPayout = airPortion + potPayout;
           potDelta -= potPayout;
-
           if (airPortion > 0) {
             await updateDoc(doc(db, "users", ranking.username), { dailyBotWinnings: increment(airPortion), lastBotWinDate: today });
           }
@@ -523,11 +553,9 @@ export async function finishRound(roomId, user) {
         // 2. WALLET BANKRUPTCY LOGIC (Cap losses to actual cash available)
         const humanWinPortion = humanDelta > 0 ? humanDelta : 0;
         const totalAvailableCash = currentCash + humanWinPortion + botWinPayout;
-
         let totalTheoreticalLoss = 0;
         if (humanDelta < 0) totalTheoreticalLoss += Math.abs(humanDelta);
         if (botDelta < 0) totalTheoreticalLoss += Math.abs(botDelta);
-
         const actualTotalLoss = Math.min(totalTheoreticalLoss, totalAvailableCash);
 
         let humanLossPaid = 0;
@@ -535,7 +563,7 @@ export async function finishRound(roomId, user) {
 
         // Pay humans first
         if (humanDelta < 0) humanLossPaid = Math.min(Math.abs(humanDelta), actualTotalLoss);
-        
+
         // Pay House Pot with whatever is left
         if (botDelta < 0) {
           botLossPaid = Math.min(Math.abs(botDelta), actualTotalLoss - humanLossPaid);
@@ -551,7 +579,6 @@ export async function finishRound(roomId, user) {
         if (walletChange !== 0) {
           await adjustCash(ranking.username, walletChange, "game_settle", `Room ${roomId} round ${results.roundNumber}`, user.username);
         }
-
         await updateUserStats(ranking.username, ranking.scorePoints, ranking.overallRank === 1 && ranking.scorePoints > 0);
       }
 
@@ -635,6 +662,7 @@ export async function sweepStaleRooms(rooms, excludeUid) {
 
 /* ============ ECONOMY ============ */
 export const DAILY_BONUS = 10000;
+
 function todayKey() { return new Date().toISOString().slice(0, 10); }
 
 export async function claimDailyBonus(username) {
