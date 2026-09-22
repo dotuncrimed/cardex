@@ -434,6 +434,49 @@ function renderSeats() {
   });
 }
 
+function escapeHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function renderSpectatorBar() {
+  const bar = document.getElementById("spectator-bar");
+  if (!bar) return;
+  const specs = (state.room && state.room.spectators) || [];
+  if (specs.length === 0) { bar.classList.add("hidden"); bar.innerHTML = ""; return; }
+  bar.classList.remove("hidden");
+
+  const MAX = 6;
+  const shown = specs.slice(0, MAX);
+  const extra = specs.length - shown.length;
+
+  const avatars = shown.map((s) => {
+    const isMe = Boolean(state.user && s.uid === state.user.uid);
+    const cls = "spec-avatar" + (s.kickedForNotReady ? " kicked" : "") + (isMe ? " me" : "");
+    const label = (s.displayName || s.username || "?").charAt(0).toUpperCase();
+    const title = (s.displayName || s.username || "?") + (isMe ? " (You)" : "") + (s.kickedForNotReady ? " — kicked: not ready" : "");
+    return `<div class="${cls}" title="${escapeHtml(title)}">${escapeHtml(label)}</div>`;
+  }).join("");
+
+  const more = extra > 0
+    ? `<div class="spec-avatar more" title="${escapeHtml(specs.slice(MAX).map((s) => s.displayName || s.username).join(", "))}">+${extra}</div>`
+    : "";
+
+  const names = specs.map((s) => {
+    const isMe = Boolean(state.user && s.uid === state.user.uid);
+    return `<div class="spec-name${s.kickedForNotReady ? " kicked" : ""}">${escapeHtml(s.displayName || s.username || "?")}${isMe ? " (You)" : ""}${s.kickedForNotReady ? " · kicked" : ""}</div>`;
+  }).join("");
+
+  bar.innerHTML =
+    `<button id="spectator-toggle" class="spec-chip" type="button">` +
+      `<span class="spec-eye">👁</span>` +
+      `<span class="spec-count">${specs.length} watching</span>` +
+    `</button>` +
+    `<div class="spec-avatars">${avatars}${more}</div>` +
+    `<div id="spectator-names" class="spec-list hidden">${names}</div>`;
+}
+
 function renderOpponentClusters() {
   const positions = ["top", "left", "right"];
   const show = state.room && ["arranging", "scoring"].includes(state.room.status) && currentUserInRoomPlayers();
@@ -1206,6 +1249,7 @@ function renderRoom() {
   renderSeats();
   syncCashListeners();
   renderOpponentClusters();
+  renderSpectatorBar();
   renderLobbySection();
   manageHandListener();
   if (state.room.status === "round_end") {
@@ -1753,6 +1797,52 @@ function injectExtraStyles() {
     .swap-fab:active { transform: translateY(-50%) scale(0.9) rotate(180deg); }
     .exit-room-btn { background: #ff5252; color: #ffffff; box-shadow: 0 3px 0 #b71c1c; }
     .ready-area .pg-actions { flex-wrap: wrap; }
+        .spectator-bar {
+      position: absolute; top: 64px; left: 12px; z-index: 26;
+      display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
+      max-width: 46%; pointer-events: auto;
+    }
+    .spectator-bar.hidden { display: none; }
+    .spec-chip {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 10px; border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: rgba(0, 0, 0, 0.45); color: #ffffff;
+      font: 700 12px/1 "Manrope", sans-serif; cursor: pointer;
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    }
+    .spec-eye { font-size: 13px; }
+    .spec-count { white-space: nowrap; }
+    .spec-avatars { display: flex; }
+    .spec-avatar {
+      width: 26px; height: 26px; margin-left: -7px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font: 800 11px/1 "Manrope", sans-serif; color: #0b1f14;
+      background: linear-gradient(160deg, #eecf7a, #c9a227);
+      border: 2px solid rgba(7, 24, 15, 0.9);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    }
+    .spec-avatar:first-child { margin-left: 0; }
+    .spec-avatar.me { background: linear-gradient(160deg, #9be7c4, #3ecf8e); }
+    .spec-avatar.kicked { background: linear-gradient(160deg, #ffb4b4, #e05561); color: #3a0a0f; }
+    .spec-avatar.more { background: rgba(255, 255, 255, 0.18); color: #ffffff; }
+    .spec-list {
+      display: flex; flex-direction: column; gap: 2px;
+      padding: 8px 10px; border-radius: 10px;
+      background: rgba(4, 12, 8, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      max-height: 160px; overflow: auto; min-width: 160px;
+    }
+    .spec-list.hidden { display: none; }
+    .spec-name {
+      font: 600 12px/1.35 "Manrope", sans-serif; color: #e8f3ec;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .spec-name.kicked { color: #ff9aa4; }
+    @media (max-width: 560px) {
+      .spectator-bar { top: 58px; left: 8px; max-width: 52%; }
+      .spec-avatar { width: 22px; height: 22px; font-size: 10px; }
+    }
   `;
   document.head.appendChild(style);
 }
@@ -1785,3 +1875,9 @@ function setupExitButtons() {
 
 injectExtraStyles();
 setTimeout(() => { setupSwapFab(); setupExitButtons(); }, 500);
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest("#spectator-toggle")) return;
+  const list = document.getElementById("spectator-names");
+  if (list) list.classList.toggle("hidden");
+});
