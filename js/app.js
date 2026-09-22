@@ -477,6 +477,8 @@ function renderSpectatorBar() {
     const title = (s.displayName || s.username || "?") + (isMe ? " (You)" : "") + (s.kickedForNotReady ? " — kicked: not ready" : "");
     return `<div class="${cls}" id="${safeDomId("spec-av-", s.uid)}" title="${escapeHtml(title)}">${escapeHtml(label)}</div>`;
   }).join("");
+  // Hidden anchors: give overflow spectators a real on-screen box so emoji
+  // flights still originate from the gallery instead of the table center.
   const hiddenAnchors = specs.slice(MAX).map((s) =>
     `<span class="spec-anchor" id="${safeDomId("spec-av-", s.uid)}" aria-hidden="true"></span>`
   ).join("");
@@ -806,6 +808,7 @@ function updateScorePanel(results, myUid, revealedRows) {
   if (tEl) tEl.textContent = revealedRows.length ? ((total >= 0 ? "+" : "") + total) : "";
 }
 
+/* FIXED: remember the reveal was seen so a refresh can't replay it */
 function markRevealSeen() {
   try {
     if (state.roomId && state.room) {
@@ -814,14 +817,26 @@ function markRevealSeen() {
   } catch (e) {}
 }
 
+/* ============================================================
+   FIXED: GUARD RETRACT.
+   The reveal overlay now hides itself the moment scoring
+   completes (auto or skip), releasing the Ready controls.
+   Previously it stayed on top (z-index 90) and trapped players.
+   ============================================================ */
 function finalizeReveal() {
   state.revealActive = false;
   state.revealPlayedFor = state.room ? state.room.roundNumber : null;
   markRevealSeen();
+
+  const layer = document.getElementById("reveal-layer");
+  if (layer) layer.classList.add("hidden");
+
   const skip = document.getElementById("reveal-skip");
   if (skip) skip.classList.add("hidden");
+
   const readyArea = document.getElementById("ready-area");
   if (readyArea) readyArea.classList.remove("hidden");
+
   if (state.room && state.room.results && state.coinsFlyedFor !== state.room.roundNumber) {
     const winner = state.room.results.rankings && state.room.results.rankings[0];
     if (winner) flyCoinsToWinner(winner.uid);
@@ -955,7 +970,7 @@ function renderHandCards() {
 }
 
 /* ============================================================
-   FIXED: Auto-arrange interlock.
+   FIXED: AUTO-ARRANGE INTERLOCK.
    Max 3 attempts per round, 10s cooldown between failures.
    After 3 failures, falls through to manual arrangement UI
    instead of hammering Firestore on every snapshot.
@@ -1327,9 +1342,12 @@ function renderRoom() {
     if (state.room.results && state.revealPlayedFor !== state.room.roundNumber && !state.revealActive && !revealSeen) {
       playRevealSequence(state.room.results);
     } else {
+      const done = state.revealPlayedFor === state.room.roundNumber || revealSeen;
+      const layer = document.getElementById("reveal-layer");
+      if (layer && done) layer.classList.add("hidden");
       renderReadyArea();
       const readyArea = document.getElementById("ready-area");
-      if (readyArea && (state.revealPlayedFor === state.room.roundNumber || revealSeen)) readyArea.classList.remove("hidden");
+      if (readyArea && done) readyArea.classList.remove("hidden");
     }
   }
 }
@@ -1577,9 +1595,23 @@ $("#join-room-button").addEventListener("click", async () => {
   } catch (error) { setText("#join-room-error", error.message || "Failed to join room."); }
 });
 
+/* ============================================================
+   FIXED: EMERGENCY EXIT WITH CONFIRMATION.
+   If leaveRoom is blocked mid-round (db interlock), warn the
+   player that their hand will be auto-played and settled.
+   They can still bail, but they do it knowingly.
+   ============================================================ */
 async function exitToMenu() {
-  try { if (state.roomId && state.user) await leaveRoom(state.user, state.roomId); }
-  catch (error) { console.warn("leaveRoom failed, escaping locally:", error); }
+  try {
+    if (state.roomId && state.user) await leaveRoom(state.user, state.roomId);
+  } catch (error) {
+    console.warn("leaveRoom blocked:", error);
+    const msg = String((error && error.message) || "");
+    if (msg.includes("Round in progress")) {
+      const proceed = confirm("Round in progress. If you leave now, your cards will be auto-played and you will still be settled. Leave anyway?");
+      if (!proceed) return;
+    }
+  }
   clearRoomState();
   showScreen("menu");
   syncRoomsListener();
